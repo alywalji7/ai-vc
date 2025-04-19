@@ -100,8 +100,9 @@ def get_entities(
     """
     Get entities from the knowledge graph
     """
+    from app.db.schema import Entity
     entities = get_entities_by_type(db, entity_type, skip, limit) if entity_type else db.query(
-        get_session().entity_class
+        Entity
     ).offset(skip).limit(limit).all()
     
     return [
@@ -126,8 +127,9 @@ def get_relationships(
     """
     Get relationships from the knowledge graph
     """
+    from app.db.schema import Relationship
     relationships = get_relationships_by_type(db, relationship_type, skip, limit) if relationship_type else db.query(
-        get_session().relationship_class
+        Relationship
     ).offset(skip).limit(limit).all()
     
     return [
