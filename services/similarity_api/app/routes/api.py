@@ -3,6 +3,7 @@ API routes for the similarity service.
 """
 
 import logging
+import uuid
 from typing import Dict, List, Any, Optional, Union
 import sys
 import os
@@ -10,11 +11,11 @@ import os
 # Add the parent directory to the path to allow importing the embedding library
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '../../../..')))
 
-from fastapi import APIRouter, HTTPException, Query, Depends
+from fastapi import APIRouter, HTTPException, Query, Depends, Response, status
 import numpy as np
 
 from app.models import SimilarityRequest, EmbeddingRequest, SimilarityResponse, SimilarityResult
-from app.database import search_similar, store_embeddings
+from app.database import search_similar, store_embeddings, is_qdrant_available
 
 # Import the embedding functions from our library
 from libs.embeddings import embed_text, embed_code, embed_table
@@ -30,6 +31,7 @@ router = APIRouter()
 @router.post("/similarity", response_model=SimilarityResponse, tags=["similarity"])
 async def get_similar_items(
     request: SimilarityRequest,
+    response: Response,
 ):
     """
     Find similar items based on the provided input.
@@ -65,6 +67,15 @@ async def get_similar_items(
     if len(embedding.shape) > 1 and embedding.shape[0] == 1:
         embedding = embedding[0]
     
+    # Check if Qdrant is available
+    if not is_qdrant_available():
+        logger.warning("Qdrant not available, returning empty results")
+        response.status_code = status.HTTP_200_OK
+        return SimilarityResponse(
+            results=[],
+            query_type=query_type,
+        )
+    
     # Search for similar items in the database
     search_results = search_similar(
         embedding=embedding,
@@ -86,7 +97,7 @@ async def get_similar_items(
 
 
 @router.post("/store", tags=["storage"])
-async def store_items(request: EmbeddingRequest):
+async def store_items(request: EmbeddingRequest, response: Response):
     """
     Store items in the vector database.
     
@@ -133,12 +144,28 @@ async def store_items(request: EmbeddingRequest):
         item_metadata["_item_type"] = item_type
         metadata.append(item_metadata)
     
+    # Generate IDs if not provided
+    ids = request.ids
+    if not ids:
+        ids = [str(uuid.uuid4()) for _ in range(len(embeddings))]
+    elif len(ids) != len(embeddings):
+        raise HTTPException(
+            status_code=400,
+            detail="Number of IDs must match number of items.",
+        )
+    
+    # Check if Qdrant is available
+    if not is_qdrant_available():
+        logger.warning("Qdrant not available, returning generated IDs without storing embeddings")
+        response.status_code = status.HTTP_200_OK
+        return {"ids": ids, "storage_status": "skipped"}
+    
     # Store the embeddings in the database
     embeddings_array = np.stack(embeddings)
-    ids = store_embeddings(
+    stored_ids = store_embeddings(
         embeddings=embeddings_array,
         metadata=metadata,
-        ids=request.ids,
+        ids=ids,
     )
     
-    return {"ids": ids}
+    return {"ids": stored_ids, "storage_status": "stored"}
