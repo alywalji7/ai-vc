@@ -61,24 +61,24 @@ export default function HomePage() {
             <div className="overflow-x-auto">
               <table className="min-w-full bg-white">
                 <thead>
-                  <tr className="bg-gray-100 text-gray-700 text-left">
-                    <th className="py-2 px-4 border-b">ID</th>
-                    <th className="py-2 px-4 border-b">Username</th>
-                    <th className="py-2 px-4 border-b">Email</th>
-                    <th className="py-2 px-4 border-b">Status</th>
+                  <tr className="bg-gray-200 text-gray-800 text-left">
+                    <th className="py-3 px-4 border-b font-semibold">ID</th>
+                    <th className="py-3 px-4 border-b font-semibold">Username</th>
+                    <th className="py-3 px-4 border-b font-semibold">Email</th>
+                    <th className="py-3 px-4 border-b font-semibold">Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {users.map((user) => (
                     <tr key={user.id}>
-                      <td className="py-2 px-4 border-b">{user.id}</td>
-                      <td className="py-2 px-4 border-b">{user.username}</td>
-                      <td className="py-2 px-4 border-b">{user.email}</td>
+                      <td className="py-2 px-4 border-b text-gray-900">{user.id}</td>
+                      <td className="py-2 px-4 border-b text-gray-900">{user.username}</td>
+                      <td className="py-2 px-4 border-b text-gray-900">{user.email}</td>
                       <td className="py-2 px-4 border-b">
                         {user.is_active ? (
-                          <span className="text-green-600">Active</span>
+                          <span className="text-green-600 font-medium">Active</span>
                         ) : (
-                          <span className="text-red-600">Inactive</span>
+                          <span className="text-red-600 font-medium">Inactive</span>
                         )}
                       </td>
                     </tr>
