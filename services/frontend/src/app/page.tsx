@@ -57,7 +57,7 @@ export default function Home() {
         </div>
       </div>
       
-      <div className="grid grid-cols-1 md:grid-cols-1 gap-6 mb-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
         <div className="bg-white p-6 rounded-lg shadow-md">
           <h2 className="text-2xl font-semibold mb-4">Backend API Service</h2>
           <p className="text-gray-600 mb-4">
@@ -66,6 +66,18 @@ export default function Home() {
           <div className="text-sm text-gray-500">
             <div className="mb-1"><span className="font-semibold">API:</span> http://localhost:8000</div>
             <div><span className="font-semibold">Documentation:</span> http://localhost:8000/docs</div>
+          </div>
+        </div>
+        
+        <div className="bg-white p-6 rounded-lg shadow-md">
+          <h2 className="text-2xl font-semibold mb-4">Modular Due Diligence Agent</h2>
+          <p className="text-gray-600 mb-4">
+            Run comprehensive due diligence checks on companies with specialized modules for
+            financial health, technical capabilities, and codebase analysis.
+          </p>
+          <div className="text-sm text-gray-500">
+            <div className="mb-1"><span className="font-semibold">API:</span> http://localhost:8000/api/dd</div>
+            <div><span className="font-semibold">UI:</span> <Link href="/due-diligence" className="text-blue-500 hover:underline">Due Diligence Engine</Link></div>
           </div>
         </div>
       </div>
