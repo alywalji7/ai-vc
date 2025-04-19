@@ -1,101 +1,134 @@
 """
-Due Diligence Base Module
+Base classes for due diligence modules.
 
-This module defines the abstract base class for all due diligence modules.
+This module defines the abstract base class for all due diligence modules
+and shared data structures for findings and verdicts.
 """
 
-import abc
-from typing import List, Dict, Any, Optional, Union, Tuple
+from abc import ABC, abstractmethod
+from typing import Dict, List, Any, Optional
 
 
 class Finding:
     """
-    Represents a single due diligence finding.
+    A specific finding from a due diligence module.
     
-    Findings can be positive, negative, or neutral observations
-    about a company.
+    Findings represent individual observations or issues discovered during
+    due diligence analysis.
     """
     
     def __init__(
         self,
         title: str,
         description: str,
-        severity: str = "info",  # info, warning, critical
+        severity: str,
         evidence: Optional[Dict[str, Any]] = None,
-        recommendations: Optional[List[str]] = None,
+        recommendations: Optional[List[str]] = None
     ):
+        """
+        Initialize a new finding.
+        
+        Args:
+            title: Short title describing the finding
+            description: Detailed description of the finding
+            severity: Severity level (critical, warning, info)
+            evidence: Supporting evidence for the finding
+            recommendations: Suggested actions to address the finding
+        """
         self.title = title
         self.description = description
-        self.severity = severity
+        self.severity = severity.lower()  # normalize to lowercase
         self.evidence = evidence or {}
         self.recommendations = recommendations or []
+        
+        # Validate severity
+        if self.severity not in ["critical", "warning", "info"]:
+            raise ValueError(
+                f"Invalid severity '{severity}'. Must be one of: critical, warning, info"
+            )
     
     def to_dict(self) -> Dict[str, Any]:
-        """Convert the finding to a dictionary."""
+        """
+        Convert the finding to a dictionary representation.
+        
+        Returns:
+            Dictionary representation of the finding
+        """
         return {
             "title": self.title,
             "description": self.description,
             "severity": self.severity,
             "evidence": self.evidence,
-            "recommendations": self.recommendations,
+            "recommendations": self.recommendations
         }
 
 
-class Verdict:
+class DDModule(ABC):
     """
-    Represents the overall verdict of a due diligence check.
+    Abstract base class for all due diligence modules.
     
-    The verdict includes a score, status, and list of findings.
-    """
-    
-    def __init__(
-        self,
-        score: float,  # 0.0 to 1.0
-        status: str,  # "pass", "warning", "fail"
-        summary: str,
-        findings: List[Finding],
-        details: Optional[Dict[str, Any]] = None,
-    ):
-        self.score = score
-        self.status = status
-        self.summary = summary
-        self.findings = findings
-        self.details = details or {}
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert the verdict to a dictionary."""
-        return {
-            "score": self.score,
-            "status": self.status,
-            "summary": self.summary,
-            "findings": [finding.to_dict() for finding in self.findings],
-            "details": self.details,
-        }
-
-
-class DDModule(abc.ABC):
-    """
-    Abstract base class for due diligence modules.
-    
-    Each module must implement the run method to perform
-    due diligence checks and return a verdict.
+    Due diligence modules implement specific types of analysis, such as
+    financial due diligence, technical due diligence, etc.
     """
     
-    @property
-    @abc.abstractmethod
-    def name(self) -> str:
-        """Get the name of the module."""
-        raise NotImplementedError
-    
-    @abc.abstractmethod
-    async def run(self, target_id: str) -> Verdict:
+    def __init__(self, name: str):
         """
-        Run due diligence on a target.
+        Initialize a new due diligence module.
         
         Args:
-            target_id: ID of the company or entity to analyze
+            name: Name of the module
+        """
+        self.name = name
+    
+    @abstractmethod
+    async def run(self, company_id: str) -> Dict[str, Any]:
+        """
+        Run due diligence for the specified company.
+        
+        Args:
+            company_id: ID of the company to analyze
             
         Returns:
-            Verdict with due diligence results
+            Dictionary containing the due diligence results
         """
-        raise NotImplementedError
+        pass
+    
+    def format_result(
+        self,
+        score: float,
+        status: str,
+        summary: str,
+        findings: List[Finding],
+        details: Optional[Dict[str, Any]] = None
+    ) -> Dict[str, Any]:
+        """
+        Format the due diligence results in a standardized way.
+        
+        Args:
+            score: Overall score (0.0 to 1.0)
+            status: Overall status (pass, warning, fail)
+            summary: Summary of the findings
+            findings: List of specific findings
+            details: Additional details or raw data
+            
+        Returns:
+            Dictionary with standardized result format
+        """
+        # Validate score
+        if not 0.0 <= score <= 1.0:
+            raise ValueError("Score must be between 0.0 and 1.0")
+        
+        # Validate status
+        status = status.lower()  # normalize to lowercase
+        if status not in ["pass", "warning", "fail", "error"]:
+            raise ValueError(
+                f"Invalid status '{status}'. Must be one of: pass, warning, fail, error"
+            )
+        
+        return {
+            "score": score,
+            "status": status,
+            "summary": summary,
+            "findings": [finding.to_dict() for finding in findings],
+            "details": details or {}
+        }

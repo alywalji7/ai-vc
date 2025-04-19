@@ -1,31 +1,38 @@
 """
-Database connection and utility functions.
+Database connection and session management for the backend service.
 """
 
 import os
+from typing import Generator
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import sessionmaker, Session
 
-# Database connection
-DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/postgres")
+# Get database URL from environment variable
+DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./test.db")
 
+# Create SQLAlchemy engine
 engine = create_engine(
     DATABASE_URL,
-    pool_pre_ping=True,
-    pool_recycle=300,
+    pool_pre_ping=True
 )
 
+# Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# Base class for all models
 Base = declarative_base()
 
 
-def get_db():
+def get_db() -> Generator[Session, None, None]:
     """
-    Get a database session.
+    Get database session.
+    
+    This function creates a new database session for each request
+    and closes it when the request is finished.
     
     Yields:
-        Session: Database session
+        Database session
     """
     db = SessionLocal()
     try:

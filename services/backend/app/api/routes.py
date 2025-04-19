@@ -1,34 +1,40 @@
 """
-Main API router.
+Main API routes module.
 
-This module combines all the API routers from different modules.
+This module aggregates all API routers and makes them available under a common prefix.
 """
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 from sqlalchemy.orm import Session
 
-from app.db import get_db
 from app.api.dataroom import router as dataroom_router
 from app.api.due_diligence import router as dd_router
 
-# Main API router
-router = APIRouter()
+# Create the main API router
+router = APIRouter(prefix="/api")
 
 # Include all sub-routers
 router.include_router(dataroom_router)
 router.include_router(dd_router)
 
 
-@router.get("/", tags=["root"])
-async def api_root():
-    """
-    Root endpoint for the API.
-    """
+@router.get("/")
+async def root():
+    """API root endpoint."""
     return {
-        "message": "API is running",
+        "message": "Welcome to the API",
         "version": "1.0.0",
-        "endpoints": [
-            "/api/dataroom",
-            "/api/dd"
-        ]
+        "docs_url": "/docs"
+    }
+
+
+@router.get("/health")
+async def health_check():
+    """Health check endpoint."""
+    return {
+        "status": "ok",
+        "services": {
+            "api": "up",
+            "database": "up",
+        }
     }

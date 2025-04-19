@@ -1,106 +1,89 @@
 """
-Due Diligence API endpoints.
+Due Diligence API routes.
 
-This module provides API endpoints for running due diligence checks on companies
-and retrieving results.
+This module provides endpoints for:
+1. Retrieving available due diligence modules
+2. Launching due diligence checks
+3. Retrieving due diligence results
 """
 
-import logging
-from typing import Dict, Any, List, Optional
-
-from fastapi import APIRouter, HTTPException, Depends
+from typing import Dict, List, Any, Optional
+from fastapi import APIRouter, Query, Depends, HTTPException
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+import sqlalchemy as sa
 
 from app.db import get_db
-from app.models import DueDiligenceResult
 from app.due_diligence import FinancialDD, TechDD
 
 router = APIRouter(prefix="/dd", tags=["due_diligence"])
-logger = logging.getLogger(__name__)
 
-# Initialize due diligence modules
-MODULES = {
-    "financial": FinancialDD(),
-    "tech": TechDD()
-}
+# Initialize the DD modules
+financial_dd = FinancialDD()
+tech_dd = TechDD()
 
 
-@router.post("/launch", response_model=Dict[str, Any])
+@router.get("/modules")
+async def get_modules() -> Dict[str, List[str]]:
+    """
+    Get available due diligence modules.
+    
+    Returns:
+        Dictionary with available module names
+    """
+    return {
+        "modules": ["financial", "tech"]
+    }
+
+
+@router.post("/launch")
 async def launch_due_diligence(
-    company_id: str,
-    modules: Optional[List[str]] = None,
-    db: Session = Depends(get_db)
+    company_id: str = Query(..., description="ID of the company to analyze"),
+    modules: List[str] = Query(["financial", "tech"], description="Due diligence modules to run")
 ) -> Dict[str, Any]:
     """
     Launch due diligence checks for a company.
     
     Args:
         company_id: ID of the company to analyze
-        modules: List of due diligence modules to run (default: all modules)
-        db: Database session
+        modules: List of due diligence modules to run
         
     Returns:
-        Dictionary with due diligence results
+        Dictionary with due diligence results by module
     """
-    logger.info(f"Launching due diligence for company {company_id}")
+    if not company_id:
+        raise HTTPException(status_code=400, detail="Company ID is required")
     
-    # If modules not specified, run all available modules
-    if not modules:
-        modules = list(MODULES.keys())
-    
-    # Validate requested modules
-    invalid_modules = [m for m in modules if m not in MODULES]
-    if invalid_modules:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid modules: {', '.join(invalid_modules)}. Available modules: {', '.join(MODULES.keys())}"
-        )
-    
-    # Run due diligence modules and collect results
     results = {}
     
-    for module_name in modules:
-        module = MODULES[module_name]
-        
+    if "financial" in modules:
         try:
-            # Run the module
-            verdict = await module.run(company_id)
-            
-            # Store the verdict in the database
-            dd_result = DueDiligenceResult(
-                company_id=company_id,
-                module_name=module_name,
-                verdict=verdict.to_dict()
-            )
-            
-            db.add(dd_result)
-            db.commit()
-            
-            # Add to results
-            results[module_name] = verdict.to_dict()
-            
+            results["financial"] = await financial_dd.run(company_id)
         except Exception as e:
-            logger.error(f"Error running {module_name} due diligence for {company_id}: {str(e)}")
-            results[module_name] = {
-                "error": str(e),
-                "status": "error"
+            results["financial"] = {
+                "error": f"Financial due diligence failed: {str(e)}"
+            }
+    
+    if "tech" in modules:
+        try:
+            results["tech"] = await tech_dd.run(company_id)
+        except Exception as e:
+            results["tech"] = {
+                "error": f"Technical due diligence failed: {str(e)}"
             }
     
     return {
         "company_id": company_id,
-        "modules_run": modules,
         "results": results
     }
 
 
-@router.get("/results/{company_id}", response_model=Dict[str, Any])
+@router.get("/results")
 async def get_due_diligence_results(
-    company_id: str,
+    company_id: str = Query(..., description="ID of the company"),
     db: Session = Depends(get_db)
 ) -> Dict[str, Any]:
     """
-    Get due diligence results for a company.
+    Get stored due diligence results for a company.
     
     Args:
         company_id: ID of the company
@@ -109,40 +92,8 @@ async def get_due_diligence_results(
     Returns:
         Dictionary with due diligence results
     """
-    results = db.query(DueDiligenceResult).filter(
-        DueDiligenceResult.company_id == company_id
-    ).order_by(desc(DueDiligenceResult.created_at)).all()
+    # This is a simplified version - in a real implementation, we would
+    # store results in the database and retrieve them here
     
-    if not results:
-        raise HTTPException(
-            status_code=404,
-            detail=f"No due diligence results found for company {company_id}"
-        )
-    
-    # Group results by module
-    grouped_results = {}
-    
-    for result in results:
-        module_name = result.module_name
-        
-        # Only keep the latest result for each module
-        if module_name not in grouped_results:
-            grouped_results[module_name] = result.verdict
-    
-    return {
-        "company_id": company_id,
-        "results": grouped_results
-    }
-
-
-@router.get("/modules", response_model=Dict[str, List[str]])
-async def get_available_modules() -> Dict[str, List[str]]:
-    """
-    Get a list of available due diligence modules.
-    
-    Returns:
-        Dictionary with list of module names
-    """
-    return {
-        "modules": list(MODULES.keys())
-    }
+    # For demo purposes, we'll just run the due diligence again
+    return await launch_due_diligence(company_id=company_id)

@@ -1,568 +1,349 @@
 """
 Financial due diligence module.
 
-This module implements a financial due diligence check for evaluating
-the financial health and unit economics of a company.
+This module analyzes the financial health of a company, including:
+- Unit economics
+- Burn rate and runway
+- Revenue growth and projections
+- Customer acquisition costs
 """
 
-import random
-import logging
-from typing import Dict, List, Any, Tuple, Optional
+import os
+import json
+from typing import Dict, List, Any, Optional, Tuple
 
 import httpx
 
-from app.due_diligence.base import DDModule, Verdict, Finding
-
-logger = logging.getLogger(__name__)
+from .base import DDModule, Finding
 
 
 class FinancialDD(DDModule):
-    """Financial due diligence module for unit economics analysis."""
+    """
+    Financial due diligence module for evaluating a company's financial health.
+    """
     
-    @property
-    def name(self) -> str:
-        """Get the name of the module."""
-        return "financial"
+    def __init__(self):
+        """Initialize the financial due diligence module."""
+        super().__init__("financial")
     
-    async def run(self, target_id: str) -> Verdict:
+    async def run(self, company_id: str) -> Dict[str, Any]:
         """
-        Run financial due diligence on a target.
-
-        This module evaluates:
-        - Unit economics
-        - Revenue growth
-        - Burn rate
-        - Cash runway
-        - Fundraising history
-
-        Args:
-            target_id: ID of the company to analyze
-
-        Returns:
-            Verdict with financial assessment
-        """
-        logger.info(f"Running financial due diligence for company {target_id}")
+        Run financial due diligence for the specified company.
         
+        Args:
+            company_id: ID of the company to analyze
+            
+        Returns:
+            Dictionary containing the financial due diligence results
+        """
         try:
-            # Get company financial data
-            financial_data = await self._get_financial_data(target_id)
+            # Get company financial data from data room
+            financial_data = await self._get_company_financial_data(company_id)
+            if not financial_data:
+                return {
+                    "error": f"No financial data found for company {company_id}"
+                }
             
-            # Analyze different aspects
-            unit_economics_score, unit_economics_findings = self._analyze_unit_economics(financial_data)
-            growth_score, growth_findings = self._analyze_revenue_growth(financial_data)
-            burn_score, burn_findings = self._analyze_burn_rate(financial_data)
-            runway_score, runway_findings = self._analyze_runway(financial_data)
-            fundraising_score, fundraising_findings = self._analyze_fundraising(financial_data)
+            # Analyze unit economics
+            unit_economics_findings = self._analyze_unit_economics(financial_data)
             
-            # Combine findings
-            findings = unit_economics_findings + growth_findings + burn_findings + runway_findings + fundraising_findings
+            # Analyze burn rate and runway
+            burn_rate_findings = self._analyze_burn_rate(financial_data)
             
-            # Calculate overall score (weighted average)
-            weights = {
-                "unit_economics": 0.3,
-                "growth": 0.2,
-                "burn": 0.2,
-                "runway": 0.2,
-                "fundraising": 0.1
-            }
+            # Analyze revenue growth
+            revenue_findings = self._analyze_revenue_growth(financial_data)
             
-            overall_score = (
-                unit_economics_score * weights["unit_economics"] +
-                growth_score * weights["growth"] +
-                burn_score * weights["burn"] +
-                runway_score * weights["runway"] +
-                fundraising_score * weights["fundraising"]
-            )
+            # Combine all findings
+            all_findings = unit_economics_findings + burn_rate_findings + revenue_findings
             
-            # Determine status based on overall score
-            status = self._get_status_from_score(overall_score)
+            # Calculate overall score
+            score = self._calculate_score(all_findings)
             
-            # Create summary
-            summary = self._generate_summary(
-                overall_score,
-                unit_economics_score,
-                growth_score,
-                burn_score,
-                runway_score,
-                fundraising_score
-            )
+            # Determine overall status
+            status = self._determine_status(score)
             
-            # Return verdict
-            return Verdict(
-                score=overall_score,
+            # Generate summary
+            summary = self._generate_summary(score, all_findings)
+            
+            # Return formatted results
+            return self.format_result(
+                score=score,
                 status=status,
                 summary=summary,
-                findings=findings,
-                details={
-                    "unit_economics_score": unit_economics_score,
-                    "growth_score": growth_score,
-                    "burn_score": burn_score,
-                    "runway_score": runway_score,
-                    "fundraising_score": fundraising_score,
-                    "financial_data": financial_data
-                }
+                findings=all_findings,
+                details={"company_id": company_id, "financial_data": financial_data}
             )
-            
         except Exception as e:
-            logger.error(f"Error in financial due diligence: {str(e)}")
-            return Verdict(
-                score=0.0,
-                status="error",
-                summary=f"Failed to complete financial due diligence: {str(e)}",
-                findings=[
-                    Finding(
-                        title="Due Diligence Error",
-                        description=f"An error occurred during financial due diligence: {str(e)}",
-                        severity="critical"
-                    )
-                ]
-            )
+            return {
+                "error": f"Financial due diligence failed: {str(e)}"
+            }
     
-    async def _get_financial_data(self, company_id: str) -> Dict[str, Any]:
+    async def _get_company_financial_data(self, company_id: str) -> Dict[str, Any]:
         """
-        Get financial data for a company.
-
+        Get financial data for the specified company from the data room.
+        
         Args:
             company_id: ID of the company
-
+            
         Returns:
-            Dictionary with financial data
+            Dictionary containing the company's financial data
         """
+        datarooms_dir = os.environ.get("DATAROOMS_DIR", "data/datarooms")
+        
+        # Try to load from file system first
         try:
-            # Try to fetch real financial data from the graph ingest service
+            file_path = os.path.join(datarooms_dir, company_id, "company_data.json")
+            if os.path.exists(file_path):
+                with open(file_path, "r") as f:
+                    data = json.load(f)
+                    return data.get("financials", {})
+        except Exception as e:
+            print(f"Error loading financial data from file system: {str(e)}")
+        
+        # Fall back to API if file system access fails
+        try:
             async with httpx.AsyncClient() as client:
                 response = await client.get(
-                    f"http://localhost:8080/api/companies/{company_id}/financials",
-                    timeout=5.0
+                    f"http://localhost:8000/api/dataroom/{company_id}"
                 )
-                
                 if response.status_code == 200:
-                    return response.json()
-            
-            # If we can't get real data, use simulated data for the demo
-            # In a real implementation, we'd return an error or fetch from another source
-            return self._generate_financial_data(company_id)
-            
+                    data = response.json()
+                    return data.get("financials", {})
         except Exception as e:
-            logger.warning(f"Error fetching financial data, using generated data: {str(e)}")
-            return self._generate_financial_data(company_id)
+            print(f"Error loading financial data from API: {str(e)}")
+        
+        return {}
     
-    def _generate_financial_data(self, company_id: str) -> Dict[str, Any]:
+    def _analyze_unit_economics(self, financial_data: Dict[str, Any]) -> List[Finding]:
         """
-        Generate simulated financial data.
-        This is only for demonstration purposes.
-
+        Analyze unit economics metrics.
+        
         Args:
-            company_id: ID of the company
-
-        Returns:
-            Dictionary with generated financial data
-        """
-        # Use a fixed seed based on company_id for reproducible results
-        seed = sum(ord(c) for c in company_id)
-        random.seed(seed)
-        
-        # Generate monthly revenue data for the last 12 months
-        current_revenue = random.uniform(10000, 1000000)
-        monthly_growth_rate = random.uniform(0.02, 0.15)  # 2% to 15% monthly growth
-        
-        monthly_revenue = []
-        for i in range(12):
-            rev = current_revenue / ((1 + monthly_growth_rate) ** (12 - i))
-            monthly_revenue.append({
-                "month": f"2024-{i+1:02d}",
-                "revenue": round(rev, 2)
-            })
-        
-        # Generate costs
-        cogs_percentage = random.uniform(0.3, 0.7)  # 30% to 70% of revenue
-        cac = random.uniform(100, 2000)  # Customer acquisition cost
-        ltv = cac * random.uniform(1.5, 7)  # Lifetime value, 1.5x to 7x CAC
-        
-        burn_rate = current_revenue * random.uniform(0.3, 2.0)  # 30% to 200% of revenue
-        cash_balance = burn_rate * random.uniform(3, 36)  # 3 to 36 months of burn
-        
-        # Generate fundraising rounds
-        num_rounds = random.randint(1, 4)
-        rounds = []
-        
-        total_raised = 0
-        for i in range(num_rounds):
-            round_type = ["Seed", "Series A", "Series B", "Series C"][min(i, 3)]
-            amount = round(random.uniform(500000, 50000000), -3)  # Round to thousands
-            total_raised += amount
-            rounds.append({
-                "date": f"202{4-i}-{random.randint(1, 12):02d}",
-                "type": round_type,
-                "amount": amount,
-                "valuation": amount * random.uniform(3, 7)
-            })
-        
-        return {
-            "company_id": company_id,
-            "monthly_revenue": monthly_revenue,
-            "current_revenue": current_revenue,
-            "cogs_percentage": cogs_percentage,
-            "cac": cac,
-            "ltv": ltv,
-            "burn_rate": burn_rate,
-            "cash_balance": cash_balance,
-            "ltv_cac_ratio": ltv / cac,
-            "gross_margin": 1 - cogs_percentage,
-            "monthly_growth_rate": monthly_growth_rate,
-            "funding_rounds": rounds,
-            "total_raised": total_raised
-        }
-    
-    def _analyze_unit_economics(self, data: Dict[str, Any]) -> Tuple[float, List[Finding]]:
-        """
-        Analyze unit economics.
-
-        Args:
-            data: Financial data
-
-        Returns:
-            Tuple of (score, findings)
-        """
-        findings = []
-        
-        # LTV/CAC ratio analysis
-        ltv_cac_ratio = data.get("ltv_cac_ratio", 0)
-        if ltv_cac_ratio < 1:
-            findings.append(Finding(
-                title="Critical LTV/CAC Ratio",
-                description=f"The LTV/CAC ratio is {ltv_cac_ratio:.1f}, which is below 1. This means the company "
-                           f"loses money on each customer.",
-                severity="critical",
-                recommendations=["Improve monetization to increase LTV", "Reduce customer acquisition costs"]
-            ))
-            ltv_cac_score = 0.0
-        elif ltv_cac_ratio < 3:
-            findings.append(Finding(
-                title="Concerning LTV/CAC Ratio",
-                description=f"The LTV/CAC ratio is {ltv_cac_ratio:.1f}, which is below the ideal target of 3+. "
-                           f"This indicates potential challenges with the unit economics.",
-                severity="warning",
-                recommendations=["Work on improving retention to boost LTV", "Optimize marketing spend"]
-            ))
-            ltv_cac_score = 0.3 + (ltv_cac_ratio - 1) * 0.3
-        else:
-            findings.append(Finding(
-                title="Strong LTV/CAC Ratio",
-                description=f"The LTV/CAC ratio is {ltv_cac_ratio:.1f}, which is above the benchmark of 3. "
-                           f"This indicates healthy unit economics.",
-                severity="info"
-            ))
-            ltv_cac_score = min(0.9 + (ltv_cac_ratio - 3) * 0.02, 1.0)
-        
-        # Gross margin analysis
-        gross_margin = data.get("gross_margin", 0)
-        if gross_margin < 0.3:
-            findings.append(Finding(
-                title="Low Gross Margin",
-                description=f"The gross margin is {gross_margin:.1%}, which is concerningly low. "
-                           f"This may make it difficult to reach profitability.",
-                severity="critical",
-                recommendations=["Reduce COGS", "Increase prices", "Change product mix"]
-            ))
-            margin_score = gross_margin / 0.3
-        elif gross_margin < 0.5:
-            findings.append(Finding(
-                title="Mediocre Gross Margin",
-                description=f"The gross margin is {gross_margin:.1%}, which is below the ideal target of 50%+. "
-                           f"There is room for improvement.",
-                severity="warning",
-                recommendations=["Look for ways to improve margins through pricing or cost reduction"]
-            ))
-            margin_score = 0.5 + (gross_margin - 0.3) * 1.5
-        else:
-            findings.append(Finding(
-                title="Healthy Gross Margin",
-                description=f"The gross margin is {gross_margin:.1%}, which is strong. "
-                           f"This provides good headroom for marketing and operations.",
-                severity="info"
-            ))
-            margin_score = min(0.8 + (gross_margin - 0.5) * 0.4, 1.0)
-        
-        # Calculate overall unit economics score
-        score = (ltv_cac_score * 0.6) + (margin_score * 0.4)
-        return score, findings
-    
-    def _analyze_revenue_growth(self, data: Dict[str, Any]) -> Tuple[float, List[Finding]]:
-        """
-        Analyze revenue growth.
-
-        Args:
-            data: Financial data
-
-        Returns:
-            Tuple of (score, findings)
-        """
-        findings = []
-        
-        # Calculate monthly growth rate
-        monthly_growth_rate = data.get("monthly_growth_rate", 0)
-        annual_growth_rate = (1 + monthly_growth_rate) ** 12 - 1
-        
-        if monthly_growth_rate < 0.03:  # Less than 3% monthly growth (42% annual)
-            findings.append(Finding(
-                title="Slow Growth",
-                description=f"The company is growing at {monthly_growth_rate:.1%} monthly ({annual_growth_rate:.1%} annual), "
-                           f"which is below venture expectations for early-stage startups.",
-                severity="warning",
-                recommendations=["Focus on growth initiatives", "Consider pivoting strategy"]
-            ))
-            growth_score = monthly_growth_rate * 20
-        elif monthly_growth_rate < 0.07:  # 3% to 7% monthly (42% to 125% annual)
-            findings.append(Finding(
-                title="Moderate Growth",
-                description=f"The company is growing at {monthly_growth_rate:.1%} monthly ({annual_growth_rate:.1%} annual), "
-                           f"which is acceptable but could be improved.",
-                severity="info",
-                recommendations=["Continue focusing on growth", "Identify growth bottlenecks"]
-            ))
-            growth_score = 0.6 + (monthly_growth_rate - 0.03) * 10
-        else:  # Over 7% monthly (125%+ annual)
-            findings.append(Finding(
-                title="Strong Growth",
-                description=f"The company is growing at {monthly_growth_rate:.1%} monthly ({annual_growth_rate:.1%} annual), "
-                           f"which demonstrates excellent product-market fit.",
-                severity="info"
-            ))
-            growth_score = min(1.0, 0.9 + (monthly_growth_rate - 0.07) * 5)
-        
-        return growth_score, findings
-    
-    def _analyze_burn_rate(self, data: Dict[str, Any]) -> Tuple[float, List[Finding]]:
-        """
-        Analyze burn rate.
-
-        Args:
-            data: Financial data
-
-        Returns:
-            Tuple of (score, findings)
-        """
-        findings = []
-        
-        current_revenue = data.get("current_revenue", 0)
-        burn_rate = data.get("burn_rate", 0)
-        
-        if current_revenue <= 0:
-            burn_ratio = float('inf')
-        else:
-            burn_ratio = burn_rate / current_revenue
-        
-        if burn_ratio > 2.0:
-            findings.append(Finding(
-                title="Excessive Burn Rate",
-                description=f"The burn rate is {burn_ratio:.1f}x revenue, which is unsustainably high. "
-                           f"The company is spending significantly more than it earns.",
-                severity="critical",
-                recommendations=["Reduce operating expenses", "Focus on core business activities"]
-            ))
-            burn_score = max(0.0, 1.0 - (burn_ratio - 2.0) / 3.0)
-        elif burn_ratio > 1.0:
-            findings.append(Finding(
-                title="High Burn Rate",
-                description=f"The burn rate is {burn_ratio:.1f}x revenue, which means the company is burning "
-                           f"more than it earns. This can be acceptable during growth phases but "
-                           f"should be monitored closely.",
-                severity="warning",
-                recommendations=["Create a path to profitability", "Monitor burn efficiency"]
-            ))
-            burn_score = 0.7 - (burn_ratio - 1.0) * 0.3
-        else:
-            findings.append(Finding(
-                title="Sustainable Burn Rate",
-                description=f"The burn rate is {burn_ratio:.1f}x revenue, which is sustainable. "
-                           f"The company is spending less than it earns.",
-                severity="info"
-            ))
-            burn_score = min(1.0, 0.8 + (1.0 - burn_ratio) * 0.2)
-        
-        return burn_score, findings
-    
-    def _analyze_runway(self, data: Dict[str, Any]) -> Tuple[float, List[Finding]]:
-        """
-        Analyze cash runway.
-
-        Args:
-            data: Financial data
-
-        Returns:
-            Tuple of (score, findings)
-        """
-        findings = []
-        
-        burn_rate = data.get("burn_rate", 0)
-        cash_balance = data.get("cash_balance", 0)
-        
-        if burn_rate <= 0:
-            runway_months = float('inf')
-        else:
-            runway_months = cash_balance / burn_rate
-        
-        if runway_months < 6:
-            findings.append(Finding(
-                title="Critical Runway",
-                description=f"The company has approximately {runway_months:.1f} months of runway remaining. "
-                           f"Immediate fundraising or cost-cutting is necessary.",
-                severity="critical",
-                recommendations=["Initiate fundraising immediately", "Cut non-essential costs"]
-            ))
-            runway_score = max(0.0, runway_months / 6)
-        elif runway_months < 12:
-            findings.append(Finding(
-                title="Limited Runway",
-                description=f"The company has approximately {runway_months:.1f} months of runway remaining. "
-                           f"Fundraising planning should be a priority.",
-                severity="warning",
-                recommendations=["Begin fundraising preparations", "Identify efficiency improvements"]
-            ))
-            runway_score = 0.5 + (runway_months - 6) / 12
-        else:
-            findings.append(Finding(
-                title="Comfortable Runway",
-                description=f"The company has approximately {runway_months:.1f} months of runway remaining, "
-                           f"providing operational flexibility.",
-                severity="info"
-            ))
-            runway_score = min(1.0, 0.8 + (runway_months - 12) / 60)
-        
-        return runway_score, findings
-    
-    def _analyze_fundraising(self, data: Dict[str, Any]) -> Tuple[float, List[Finding]]:
-        """
-        Analyze fundraising history.
-
-        Args:
-            data: Financial data
-
-        Returns:
-            Tuple of (score, findings)
-        """
-        findings = []
-        
-        funding_rounds = data.get("funding_rounds", [])
-        total_raised = data.get("total_raised", 0)
-        
-        if not funding_rounds:
-            findings.append(Finding(
-                title="No Fundraising History",
-                description="The company has no recorded fundraising rounds, which could indicate "
-                           "bootstrapping or incomplete data.",
-                severity="warning"
-            ))
-            fundraising_score = 0.5
-        else:
-            latest_round = funding_rounds[0]
-            round_type = latest_round.get("type", "")
-            round_amount = latest_round.get("amount", 0)
+            financial_data: Dictionary containing the company's financial data
             
-            if round_type == "Seed" and round_amount < 1000000:
+        Returns:
+            List of findings related to unit economics
+        """
+        findings = []
+        
+        # Extract relevant metrics
+        cac = financial_data.get("cac", 0)  # Customer acquisition cost
+        ltv = financial_data.get("ltv", 0)  # Lifetime value
+        cogs = financial_data.get("cogs_percentage", 0)  # Cost of goods sold
+        margin = financial_data.get("gross_margin", 0)  # Gross margin
+        
+        # Check LTV/CAC ratio
+        if ltv > 0 and cac > 0:
+            ltv_cac_ratio = ltv / cac
+            if ltv_cac_ratio < 3:
                 findings.append(Finding(
-                    title="Small Seed Round",
-                    description=f"The company raised a small seed round of ${round_amount/1000:.0f}K, "
-                               f"which may be insufficient for significant growth.",
-                    severity="warning"
+                    title="Low LTV/CAC Ratio",
+                    description=f"The LTV/CAC ratio is {ltv_cac_ratio:.2f}, which is below the recommended minimum of 3.",
+                    severity="warning" if ltv_cac_ratio >= 2 else "critical",
+                    evidence={"ltv": ltv, "cac": cac, "ratio": ltv_cac_ratio},
+                    recommendations=[
+                        "Improve customer retention to increase LTV",
+                        "Optimize marketing spend to reduce CAC",
+                        "Consider pricing adjustments to improve unit economics"
+                    ]
                 ))
-                fundraising_score = 0.4 + (round_amount / 1000000) * 0.2
-            elif round_type == "Series A" and round_amount < 5000000:
-                findings.append(Finding(
-                    title="Below-Average Series A",
-                    description=f"The company raised ${round_amount/1000000:.1f}M in Series A, "
-                               f"which is below the typical range.",
-                    severity="warning"
-                ))
-                fundraising_score = 0.5 + (round_amount / 5000000) * 0.25
-            elif round_type == "Series B" and round_amount < 10000000:
-                findings.append(Finding(
-                    title="Below-Average Series B",
-                    description=f"The company raised ${round_amount/1000000:.1f}M in Series B, "
-                               f"which is below the typical range.",
-                    severity="warning"
-                ))
-                fundraising_score = 0.6 + (round_amount / 10000000) * 0.2
             else:
                 findings.append(Finding(
-                    title="Strong Fundraising",
-                    description=f"The company successfully raised ${total_raised/1000000:.1f}M across "
-                               f"{len(funding_rounds)} rounds, with the latest being a {round_type} round "
-                               f"of ${round_amount/1000000:.1f}M.",
-                    severity="info"
+                    title="Healthy LTV/CAC Ratio",
+                    description=f"The LTV/CAC ratio is {ltv_cac_ratio:.2f}, which is above the recommended minimum of 3.",
+                    severity="info",
+                    evidence={"ltv": ltv, "cac": cac, "ratio": ltv_cac_ratio}
                 ))
-                fundraising_score = min(1.0, 0.8 + (0.05 * len(funding_rounds)))
         
-        return fundraising_score, findings
+        # Check gross margin
+        if margin is not None:
+            if margin < 0.4:
+                findings.append(Finding(
+                    title="Low Gross Margin",
+                    description=f"The gross margin is {margin:.0%}, which may not be sustainable for a SaaS or tech company.",
+                    severity="warning" if margin >= 0.3 else "critical",
+                    evidence={"gross_margin": margin},
+                    recommendations=[
+                        "Review pricing strategy",
+                        "Look for ways to reduce COGS",
+                        "Consider focusing on higher-margin products or customers"
+                    ]
+                ))
+            else:
+                findings.append(Finding(
+                    title="Healthy Gross Margin",
+                    description=f"The gross margin is {margin:.0%}, which is typical for a successful SaaS or tech company.",
+                    severity="info",
+                    evidence={"gross_margin": margin}
+                ))
+        
+        return findings
     
-    def _generate_summary(
-        self,
-        overall_score: float,
-        unit_economics_score: float,
-        growth_score: float,
-        burn_score: float,
-        runway_score: float,
-        fundraising_score: float
-    ) -> str:
+    def _analyze_burn_rate(self, financial_data: Dict[str, Any]) -> List[Finding]:
         """
-        Generate a summary based on financial scores.
+        Analyze burn rate and runway.
         
         Args:
-            overall_score: Overall financial score
-            unit_economics_score: Unit economics score
-            growth_score: Growth score
-            burn_score: Burn rate score
-            runway_score: Runway score
-            fundraising_score: Fundraising score
+            financial_data: Dictionary containing the company's financial data
             
         Returns:
-            Summary text
+            List of findings related to burn rate and runway
         """
-        if overall_score < 0.4:
-            summary = "The financial health of the company is concerning. "
-        elif overall_score < 0.7:
-            summary = "The company shows mixed financial indicators. "
-        else:
-            summary = "The company demonstrates strong financial health. "
+        findings = []
         
-        # Add details about strongest and weakest areas
-        scores = {
-            "unit economics": unit_economics_score,
-            "revenue growth": growth_score,
-            "burn rate management": burn_score,
-            "cash runway": runway_score,
-            "fundraising history": fundraising_score
-        }
+        # Extract relevant metrics
+        monthly_burn = financial_data.get("monthly_burn", 0)
+        cash_on_hand = financial_data.get("cash_on_hand", 0)
         
-        strongest = max(scores.items(), key=lambda x: x[1])
-        weakest = min(scores.items(), key=lambda x: x[1])
+        # Calculate runway
+        if monthly_burn > 0 and cash_on_hand > 0:
+            runway_months = cash_on_hand / monthly_burn
+            
+            if runway_months < 12:
+                findings.append(Finding(
+                    title="Short Runway",
+                    description=f"The company has approximately {runway_months:.1f} months of runway based on current burn rate.",
+                    severity="critical" if runway_months < 6 else "warning",
+                    evidence={"cash_on_hand": cash_on_hand, "monthly_burn": monthly_burn, "runway_months": runway_months},
+                    recommendations=[
+                        "Reduce burn rate to extend runway",
+                        "Accelerate fundraising timeline",
+                        "Focus on revenue-generating activities"
+                    ]
+                ))
+            else:
+                findings.append(Finding(
+                    title="Adequate Runway",
+                    description=f"The company has approximately {runway_months:.1f} months of runway based on current burn rate.",
+                    severity="info",
+                    evidence={"cash_on_hand": cash_on_hand, "monthly_burn": monthly_burn, "runway_months": runway_months}
+                ))
         
-        summary += f"The strongest area is {strongest[0]} ({strongest[1]:.1%}), "
-        summary += f"while the weakest is {weakest[0]} ({weakest[1]:.1%}). "
-        
-        if weakest[1] < 0.3:
-            summary += f"Immediate attention is required to address issues with {weakest[0]}."
-        elif weakest[1] < 0.6:
-            summary += f"The company should focus on improving {weakest[0]}."
-        else:
-            summary += "All financial indicators are within acceptable ranges."
-        
-        return summary
+        return findings
     
-    def _get_status_from_score(self, score: float) -> str:
+    def _analyze_revenue_growth(self, financial_data: Dict[str, Any]) -> List[Finding]:
         """
-        Convert a score to a status string.
+        Analyze revenue growth and projections.
         
         Args:
-            score: Numeric score (0.0 to 1.0)
+            financial_data: Dictionary containing the company's financial data
             
         Returns:
-            Status string ("pass", "warning", or "fail")
+            List of findings related to revenue growth
         """
-        if score < 0.4:
-            return "fail"
-        elif score < 0.7:
+        findings = []
+        
+        # Extract relevant metrics
+        current_mrr = financial_data.get("current_mrr", 0)
+        previous_mrr = financial_data.get("previous_mrr", 0)
+        yoy_growth = financial_data.get("yoy_growth", 0)
+        
+        # Check MRR growth
+        if current_mrr > 0 and previous_mrr > 0:
+            mrr_growth = (current_mrr - previous_mrr) / previous_mrr
+            
+            if mrr_growth < 0.10:  # Less than 10% MRR growth
+                findings.append(Finding(
+                    title="Slow MRR Growth",
+                    description=f"MRR growth is {mrr_growth:.1%}, which is below the benchmark for early-stage startups.",
+                    severity="warning" if mrr_growth >= 0.05 else "critical",
+                    evidence={"current_mrr": current_mrr, "previous_mrr": previous_mrr, "mrr_growth": mrr_growth},
+                    recommendations=[
+                        "Review sales and marketing strategies",
+                        "Focus on customer expansion and reducing churn",
+                        "Consider pivoting or refocusing product offering"
+                    ]
+                ))
+            else:
+                findings.append(Finding(
+                    title="Strong MRR Growth",
+                    description=f"MRR growth is {mrr_growth:.1%}, which is healthy for an early-stage startup.",
+                    severity="info",
+                    evidence={"current_mrr": current_mrr, "previous_mrr": previous_mrr, "mrr_growth": mrr_growth}
+                ))
+        
+        # Check YoY growth
+        if yoy_growth is not None:
+            if yoy_growth < 0.5:  # Less than 50% YoY growth
+                findings.append(Finding(
+                    title="Below-Target Annual Growth",
+                    description=f"Year-over-year growth is {yoy_growth:.1%}, which is below the typical target for venture-backed startups.",
+                    severity="warning" if yoy_growth >= 0.2 else "critical",
+                    evidence={"yoy_growth": yoy_growth},
+                    recommendations=[
+                        "Identify and address growth bottlenecks",
+                        "Review competitive positioning",
+                        "Consider new go-to-market strategies"
+                    ]
+                ))
+            else:
+                findings.append(Finding(
+                    title="Strong Annual Growth",
+                    description=f"Year-over-year growth is {yoy_growth:.1%}, which meets or exceeds typical targets for venture-backed startups.",
+                    severity="info",
+                    evidence={"yoy_growth": yoy_growth}
+                ))
+        
+        return findings
+    
+    def _calculate_score(self, findings: List[Finding]) -> float:
+        """
+        Calculate an overall score based on findings.
+        
+        Args:
+            findings: List of findings
+            
+        Returns:
+            Score between 0.0 and 1.0
+        """
+        # Count findings by severity
+        critical = sum(1 for f in findings if f.severity == "critical")
+        warning = sum(1 for f in findings if f.severity == "warning")
+        info = sum(1 for f in findings if f.severity == "info")
+        
+        # Start with a base score
+        base_score = 0.7
+        
+        # Adjust based on findings
+        score = base_score - (critical * 0.2) - (warning * 0.1) + (info * 0.05)
+        
+        # Ensure score is within bounds
+        return max(0.0, min(1.0, score))
+    
+    def _determine_status(self, score: float) -> str:
+        """
+        Determine overall status based on score.
+        
+        Args:
+            score: Score between 0.0 and 1.0
+            
+        Returns:
+            Status (pass, warning, fail)
+        """
+        if score >= 0.7:
+            return "pass"
+        elif score >= 0.4:
             return "warning"
         else:
-            return "pass"
+            return "fail"
+    
+    def _generate_summary(self, score: float, findings: List[Finding]) -> str:
+        """
+        Generate a summary based on score and findings.
+        
+        Args:
+            score: Score between 0.0 and 1.0
+            findings: List of findings
+            
+        Returns:
+            Summary of the financial due diligence
+        """
+        critical_count = sum(1 for f in findings if f.severity == "critical")
+        warning_count = sum(1 for f in findings if f.severity == "warning")
+        
+        if score >= 0.7:
+            return f"The company demonstrates strong financial health with {critical_count} critical and {warning_count} minor issues identified. Overall, the financial metrics indicate a sustainable business model."
+        elif score >= 0.4:
+            return f"The company shows concerning financial metrics with {critical_count} critical and {warning_count} minor issues identified. These issues should be addressed before proceeding with investment."
+        else:
+            return f"The company exhibits poor financial health with {critical_count} critical and {warning_count} minor issues identified. The current financial model does not appear to be sustainable without significant changes."
