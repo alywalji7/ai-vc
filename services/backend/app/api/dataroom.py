@@ -10,7 +10,7 @@ from typing import Dict, Any, List, Optional
 from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel
 
-router = APIRouter(prefix="/api/dataroom", tags=["dataroom"])
+router = APIRouter(prefix="/dataroom", tags=["dataroom"])
 
 # Path to data rooms directory
 DATAROOMS_DIR = os.path.join("data", "datarooms")
