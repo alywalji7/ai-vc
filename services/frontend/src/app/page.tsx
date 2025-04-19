@@ -45,6 +45,20 @@ export default function Home() {
         </div>
         
         <div className="bg-white p-6 rounded-lg shadow-md">
+          <h2 className="text-2xl font-semibold mb-4">Deal-Flow Radar (Scoring Service)</h2>
+          <p className="text-gray-600 mb-4">
+            Identify promising companies for investment using a CatBoost binary classifier trained 
+            on company metrics and predicting top-decile exits.
+          </p>
+          <div className="text-sm text-gray-500">
+            <div className="mb-1"><span className="font-semibold">API:</span> http://localhost:8095</div>
+            <div><span className="font-semibold">Endpoint:</span> <code className="bg-gray-100 px-1 py-0.5 rounded">/radar/daily_shortlist?limit=N</code></div>
+          </div>
+        </div>
+      </div>
+      
+      <div className="grid grid-cols-1 md:grid-cols-1 gap-6 mb-6">
+        <div className="bg-white p-6 rounded-lg shadow-md">
           <h2 className="text-2xl font-semibold mb-4">Backend API Service</h2>
           <p className="text-gray-600 mb-4">
             FastAPI backend service with user authentication and data access endpoints.
