@@ -24,6 +24,10 @@ args = "Backend Service"
 task = "workflow.run"
 args = "Graph Ingest Service"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Scheduler Service"
+
 [[workflows.workflow]]
 name = "Frontend Service"
 author = "agent"
@@ -69,6 +73,21 @@ task = "shell.exec"
 args = "cd services/graph_ingest && pip install -r requirements.txt && python main.py"
 waitForPort = 8080
 
+[[workflows.workflow]]
+name = "Scheduler Service"
+author = "agent"
+
+[workflows.workflow.metadata]
+agentRequireRestartOnSave = false
+
+[[workflows.workflow.tasks]]
+task = "packager.installForAll"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd services/scheduler && python -m main"
+waitForPort = 8000
+
 [deployment]
 run = ["sh", "-c", "cd services/frontend && npm install && npm run dev -- -p 5000"]
 
@@ -83,3 +102,7 @@ externalPort = 8000
 [[ports]]
 localPort = 8080
 externalPort = 8080
+
+[[ports]]
+localPort = 9090
+externalPort = 3000

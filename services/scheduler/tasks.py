@@ -4,25 +4,20 @@ Task definitions for scheduler service.
 This module contains the Celery task functions that will be executed
 according to the crontab schedule.
 """
-
 import os
+from typing import Dict, Any
+
 import httpx
-import logging
-from celery_app import app, track_task_metrics
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
-logger = logging.getLogger(__name__)
+from services.scheduler.celery_app import app, track_task_metrics
 
-# API base URL for the Graph Ingest Service
-GRAPH_INGEST_API_URL = os.environ.get('GRAPH_INGEST_API_URL', 'http://localhost:8080')
+# Environment variables
+GRAPH_INGEST_API_URL = os.environ.get("GRAPH_INGEST_API_URL", "http://localhost:8080")
 
-@app.task
+
+@app.task(bind=True, name="services.scheduler.tasks.ingest_github")
 @track_task_metrics
-def ingest_github(org_or_user):
+def ingest_github(self, org_or_user: str) -> Dict[str, Any]:
     """
     Task to ingest GitHub data for an organization or user.
     
@@ -32,40 +27,38 @@ def ingest_github(org_or_user):
     Returns:
         Dictionary with ingestion results
     """
-    logger.info(f"Starting GitHub ingestion for: {org_or_user}")
+    # Determine if this is an organization or a user
+    if "/" in org_or_user:
+        # This is a repository
+        org, repo = org_or_user.split("/", 1)
+        url = f"{GRAPH_INGEST_API_URL}/api/ingest/github?org={org}&repo={repo}"
+    elif org_or_user.startswith("@"):
+        # This is a user
+        user = org_or_user[1:]  # Remove the @ prefix
+        url = f"{GRAPH_INGEST_API_URL}/api/ingest/github?user={user}"
+    else:
+        # This is an organization
+        url = f"{GRAPH_INGEST_API_URL}/api/ingest/github?org={org_or_user}"
     
     try:
-        # Determine if this is an organization or user based on some heuristic
-        # This is a simplified example - in reality, you might need to check first
-        is_org = not org_or_user.startswith('user_')
-        
-        # Prepare the request payload
-        payload = {
-            "source": "github",
-            "org": org_or_user if is_org else None,
-            "user": None if is_org else org_or_user,
-        }
-        
-        # Make POST request to the Graph Ingest API
-        with httpx.Client(timeout=300.0) as client:  # 5-minute timeout
-            response = client.post(f"{GRAPH_INGEST_API_URL}/api/ingest", json=payload)
-            response.raise_for_status()
-            
-            result = response.json()
-            
-            logger.info(f"GitHub ingestion completed for {org_or_user}. " 
-                      f"Entities: {result.get('entities_count', 0)}, " 
-                      f"Relationships: {result.get('relationships_count', 0)}")
-            
-            return result
-    except Exception as e:
-        logger.error(f"Error ingesting GitHub data for {org_or_user}: {e}")
-        raise
+        response = httpx.post(url)
+        response.raise_for_status()
+        return response.json()
+    except httpx.RequestError as e:
+        self.retry(exc=e, countdown=60, max_retries=3)
+        return {"status": "error", "message": f"Request error: {str(e)}"}
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code >= 500:
+            self.retry(exc=e, countdown=60, max_retries=3)
+            return {"status": "error", "message": f"Server error: {str(e)}"}
+        else:
+            # Client error, don't retry
+            return {"status": "error", "message": f"Client error: {str(e)}"}
 
 
-@app.task
+@app.task(bind=True, name="services.scheduler.tasks.ingest_crunchbase")
 @track_task_metrics
-def ingest_crunchbase(company_or_person):
+def ingest_crunchbase(self, company_or_person: str) -> Dict[str, Any]:
     """
     Task to ingest Crunchbase data for a company or person.
     
@@ -75,40 +68,34 @@ def ingest_crunchbase(company_or_person):
     Returns:
         Dictionary with ingestion results
     """
-    logger.info(f"Starting Crunchbase ingestion for: {company_or_person}")
+    # Determine if this is a company or a person
+    if company_or_person.startswith("@"):
+        # This is a person
+        person = company_or_person[1:]  # Remove the @ prefix
+        url = f"{GRAPH_INGEST_API_URL}/api/ingest/crunchbase?person={person}"
+    else:
+        # This is a company
+        url = f"{GRAPH_INGEST_API_URL}/api/ingest/crunchbase?company={company_or_person}"
     
     try:
-        # Determine if this is a company or person based on some heuristic
-        # This is a simplified example - in reality, you might need to check first
-        is_company = not company_or_person.startswith('person_')
-        
-        # Prepare the request payload
-        payload = {
-            "source": "crunchbase",
-            "company": company_or_person if is_company else None,
-            "person": None if is_company else company_or_person,
-        }
-        
-        # Make POST request to the Graph Ingest API
-        with httpx.Client(timeout=300.0) as client:  # 5-minute timeout
-            response = client.post(f"{GRAPH_INGEST_API_URL}/api/ingest", json=payload)
-            response.raise_for_status()
-            
-            result = response.json()
-            
-            logger.info(f"Crunchbase ingestion completed for {company_or_person}. " 
-                      f"Entities: {result.get('entities_count', 0)}, " 
-                      f"Relationships: {result.get('relationships_count', 0)}")
-            
-            return result
-    except Exception as e:
-        logger.error(f"Error ingesting Crunchbase data for {company_or_person}: {e}")
-        raise
+        response = httpx.post(url)
+        response.raise_for_status()
+        return response.json()
+    except httpx.RequestError as e:
+        self.retry(exc=e, countdown=60, max_retries=3)
+        return {"status": "error", "message": f"Request error: {str(e)}"}
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code >= 500:
+            self.retry(exc=e, countdown=60, max_retries=3)
+            return {"status": "error", "message": f"Server error: {str(e)}"}
+        else:
+            # Client error, don't retry
+            return {"status": "error", "message": f"Client error: {str(e)}"}
 
 
-@app.task
+@app.task(bind=True, name="services.scheduler.tasks.cleanup_old_data")
 @track_task_metrics
-def cleanup_old_data(days_to_keep):
+def cleanup_old_data(self, days_to_keep: int) -> Dict[str, Any]:
     """
     Task to clean up data older than a certain number of days.
     
@@ -118,24 +105,19 @@ def cleanup_old_data(days_to_keep):
     Returns:
         Dictionary with cleanup results
     """
-    logger.info(f"Starting data cleanup. Keeping {days_to_keep} days of data.")
+    url = f"{GRAPH_INGEST_API_URL}/api/maintenance/cleanup?days_to_keep={days_to_keep}"
     
     try:
-        # In a real implementation, you would make a request to an API endpoint
-        # that handles the actual cleanup operation
-        
-        # This is a placeholder implementation
-        cleanup_stats = {
-            "entities_removed": 0,
-            "relationships_removed": 0,
-            "status": "success"
-        }
-        
-        logger.info(f"Data cleanup completed. "
-                  f"Entities removed: {cleanup_stats['entities_removed']}, "
-                  f"Relationships removed: {cleanup_stats['relationships_removed']}")
-        
-        return cleanup_stats
-    except Exception as e:
-        logger.error(f"Error cleaning up old data: {e}")
-        raise
+        response = httpx.post(url)
+        response.raise_for_status()
+        return response.json()
+    except httpx.RequestError as e:
+        self.retry(exc=e, countdown=60, max_retries=3)
+        return {"status": "error", "message": f"Request error: {str(e)}"}
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code >= 500:
+            self.retry(exc=e, countdown=60, max_retries=3)
+            return {"status": "error", "message": f"Server error: {str(e)}"}
+        else:
+            # Client error, don't retry
+            return {"status": "error", "message": f"Client error: {str(e)}"}

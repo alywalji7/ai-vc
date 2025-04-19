@@ -6,54 +6,37 @@ This module defines a scheduler that:
 2. Schedules tasks at specified intervals using the Celery beat service
 3. Exposes metrics via Prometheus for monitoring
 """
-
 import os
 import time
-import yaml
 import logging
-from datetime import datetime, timedelta
-from croniter import croniter
-from celery import Celery
-import prometheus_client
-from prometheus_client import Counter, Gauge
+import datetime
+from pathlib import Path
+from typing import Dict, Any, List, Optional
+
+import yaml
+import croniter
+import celery
+import prometheus_client as pc
+from prometheus_client import start_http_server
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
-# Set default Redis URL if not provided in environment
-REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+# Environment variables
+CRONTAB_PATH = os.environ.get("CRONTAB_PATH", "crontab.yml")
+PROMETHEUS_PORT = int(os.environ.get("PROMETHEUS_PORT", "9090"))
 
-# Get the path to the crontab.yml file
-CRONTAB_PATH = os.environ.get('CRONTAB_PATH', 'services/scheduler/crontab.yml')
-
-# Create metrics
-SCHEDULER_TASK_NEXT_RUN = Gauge(
-    'scheduler_task_next_run_seconds',
-    'Time in seconds until the next scheduled run of each task',
-    ['task_name']
-)
-
-SCHEDULER_LAST_LOAD_SUCCESS = Gauge(
-    'scheduler_last_load_success',
-    'Whether the last crontab load was successful (1=success, 0=failure)'
-)
-
-SCHEDULER_TASK_SCHEDULED = Counter(
-    'scheduler_task_scheduled_total',
-    'Number of times a task has been scheduled',
-    ['task_name']
-)
 
 class Scheduler:
     """
     Service that reads a crontab.yml file and schedules Celery tasks.
     """
     
-    def __init__(self, crontab_path, app):
+    def __init__(self, crontab_path: str, app: celery.Celery):
         """
         Initialize the scheduler.
         
@@ -63,33 +46,66 @@ class Scheduler:
         """
         self.crontab_path = crontab_path
         self.app = app
-        self.scheduled_tasks = {}
-        self.last_check_time = datetime.now()
-        # Start with failure until we successfully load
-        SCHEDULER_LAST_LOAD_SUCCESS.set(0)
+        self.tasks: List[Dict[str, Any]] = []
+        self.last_modified_time = 0
+        
+        # Define Prometheus metrics
+        self.scheduled_tasks = pc.Gauge(
+            "scheduled_tasks",
+            "Number of tasks scheduled",
+            ["task_name"]
+        )
+        self.crontab_reload_total = pc.Counter(
+            "crontab_reload_total",
+            "Total number of crontab reloads",
+            ["status"]
+        )
+        self.next_execution_time = pc.Gauge(
+            "next_execution_time_seconds",
+            "Next execution time in seconds since epoch",
+            ["task_name"]
+        )
     
-    def load_crontab(self):
+    def load_crontab(self) -> Dict[str, Any]:
         """
         Load the crontab configuration from the YAML file.
         
         Returns:
             Dictionary containing the task configurations
         """
+        crontab_file = Path(self.crontab_path)
+        
+        if not crontab_file.exists():
+            logger.error("Crontab file not found: %s", self.crontab_path)
+            self.crontab_reload_total.labels(status="error").inc()
+            return {}
+        
+        # Check if the file has been modified since the last load
+        mod_time = crontab_file.stat().st_mtime
+        if mod_time <= self.last_modified_time:
+            # File hasn't changed, return cached tasks
+            return {"tasks": self.tasks}
+        
         try:
-            logger.info(f"Loading crontab from {self.crontab_path}")
-            with open(self.crontab_path, 'r') as f:
-                config = yaml.safe_load(f)
+            with open(crontab_file, "r") as f:
+                crontab = yaml.safe_load(f)
             
-            # Set success metric
-            SCHEDULER_LAST_LOAD_SUCCESS.set(1)
-            return config
+            # Update last modified time
+            self.last_modified_time = mod_time
+            
+            # Update tasks cache
+            self.tasks = crontab.get("tasks", [])
+            
+            self.crontab_reload_total.labels(status="success").inc()
+            logger.info("Loaded crontab with %d tasks", len(self.tasks))
+            
+            return crontab
         except Exception as e:
-            logger.error(f"Error loading crontab: {e}")
-            # Set failure metric
-            SCHEDULER_LAST_LOAD_SUCCESS.set(0)
-            raise
+            logger.error("Error loading crontab: %s", str(e))
+            self.crontab_reload_total.labels(status="error").inc()
+            return {}
     
-    def calculate_next_run(self, cron_expr):
+    def calculate_next_run(self, cron_expr: str) -> datetime.datetime:
         """
         Calculate the next run time based on a cron expression.
         
@@ -99,10 +115,11 @@ class Scheduler:
         Returns:
             Datetime object representing the next run time
         """
-        iter = croniter(cron_expr, datetime.now())
-        return iter.get_next(datetime)
+        now = datetime.datetime.now()
+        cron = croniter.croniter(cron_expr, now)
+        return cron.get_next(datetime.datetime)
     
-    def seconds_until_next_run(self, next_run):
+    def seconds_until_next_run(self, next_run: datetime.datetime) -> float:
         """
         Calculate the number of seconds until the next run.
         
@@ -112,10 +129,10 @@ class Scheduler:
         Returns:
             Number of seconds until the next run
         """
-        now = datetime.now()
-        return max(0, (next_run - now).total_seconds())
+        now = datetime.datetime.now()
+        return (next_run - now).total_seconds()
     
-    def schedule_task(self, task_config):
+    def schedule_task(self, task_config: Dict[str, Any]) -> None:
         """
         Schedule a single task based on its configuration.
         
@@ -125,43 +142,41 @@ class Scheduler:
         Returns:
             None
         """
-        task_name = task_config['name']
-        cron_expr = task_config['cron']
-        task_path = task_config['task']
-        args = task_config.get('args', [])
-        kwargs = task_config.get('kwargs', {})
+        name = task_config.get("name")
+        cron = task_config.get("cron")
+        task = task_config.get("task")
+        args = task_config.get("args", [])
+        kwargs = task_config.get("kwargs", {})
+        enabled = task_config.get("enabled", True)
+        
+        if not all([name, cron, task]) or not enabled:
+            if not enabled:
+                logger.info("Task %s is disabled, skipping", name)
+            else:
+                logger.error("Invalid task configuration: %s", task_config)
+            return
         
         # Calculate next run time
-        next_run = self.calculate_next_run(cron_expr)
+        next_run = self.calculate_next_run(cron)
+        delay_seconds = self.seconds_until_next_run(next_run)
         
-        # Update metric for next run time
-        seconds_until_next = self.seconds_until_next_run(next_run)
-        SCHEDULER_TASK_NEXT_RUN.labels(task_name=task_name).set(seconds_until_next)
-        
-        logger.info(f"Task {task_name} scheduled to run in {seconds_until_next:.2f} seconds")
-        
-        # Get the task function
-        task_func = self.app.tasks[task_path]
+        # Update Prometheus metrics
+        self.scheduled_tasks.labels(task_name=name).set(1)
+        self.next_execution_time.labels(task_name=name).set(next_run.timestamp())
         
         # Schedule the task
-        self.app.send_task(
-            task_path,
-            args=args,
-            kwargs=kwargs,
-            eta=next_run,
-            task_id=f"{task_name}-{next_run.isoformat()}"
+        logger.info(
+            "Scheduling task %s (%s) to run in %.2f seconds (at %s)",
+            name, task, delay_seconds, next_run.strftime("%Y-%m-%d %H:%M:%S")
         )
         
-        # Increment the scheduled counter
-        SCHEDULER_TASK_SCHEDULED.labels(task_name=task_name).inc()
+        # Apply the task with the given arguments
+        task_instance = self.app.signature(task, args=args, kwargs=kwargs)
+        result = task_instance.apply_async(countdown=max(0, int(delay_seconds)))
         
-        # Store the next run time
-        self.scheduled_tasks[task_name] = {
-            'config': task_config,
-            'next_run': next_run
-        }
+        logger.info("Task %s scheduled with ID %s", name, result.id)
     
-    def run(self):
+    def run(self) -> None:
         """
         Main loop for the scheduler.
         
@@ -180,37 +195,21 @@ class Scheduler:
         while True:
             try:
                 # Load the crontab configuration
-                config = self.load_crontab()
+                crontab = self.load_crontab()
+                tasks = crontab.get("tasks", [])
                 
-                # Get the current time
-                now = datetime.now()
+                # Schedule all tasks
+                for task_config in tasks:
+                    self.schedule_task(task_config)
                 
-                # Process each task in the configuration
-                for task_config in config.get('tasks', []):
-                    task_name = task_config['name']
-                    
-                    # Skip tasks that are not enabled
-                    if not task_config.get('enabled', True):
-                        logger.debug(f"Skipping disabled task: {task_name}")
-                        continue
-                    
-                    # Check if the task needs to be scheduled
-                    if (task_name not in self.scheduled_tasks or
-                            now >= self.scheduled_tasks[task_name]['next_run']):
-                        self.schedule_task(task_config)
-                
-                # Update the last check time
-                self.last_check_time = now
-                
-                # Sleep for a bit before checking again
-                time.sleep(30)
-                
+                # Sleep for a while before checking again
+                time.sleep(60)
             except Exception as e:
-                logger.error(f"Error in scheduler: {e}")
-                time.sleep(60)  # Sleep longer on error
-                
+                logger.error("Error in scheduler: %s", str(e))
+                time.sleep(60)
 
-def start_scheduler():
+
+def start_scheduler() -> None:
     """
     Start the scheduler service.
     
@@ -223,15 +222,13 @@ def start_scheduler():
     Returns:
         None
     """
-    # Create Celery application
-    app = Celery('scheduler',
-                broker=REDIS_URL,
-                backend=REDIS_URL)
+    from services.scheduler.celery_app import app
     
     # Start Prometheus metrics server
-    prometheus_client.start_http_server(9090)
+    logger.info("Starting Prometheus metrics server on port %d", PROMETHEUS_PORT)
+    start_http_server(PROMETHEUS_PORT)
     
-    # Create and run scheduler
+    # Create and run the scheduler
     scheduler = Scheduler(CRONTAB_PATH, app)
     scheduler.run()
 
