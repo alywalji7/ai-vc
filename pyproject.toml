@@ -21,6 +21,11 @@ croniter = "^6.0.0"
 celery = "^5.5.1"
 redis = "^5.2.1"
 pydantic = "^2.11.3"
+sentence-transformers = "^4.1.0"
+qdrant-client = "^1.13.3"
+huggingface-hub = "^0.30.2"
+pytest = "^8.3.5"
+numpy = "^2.2.4"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"
