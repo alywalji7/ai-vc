@@ -7,7 +7,7 @@ round size, geography, etc.
 """
 
 from typing import List, Dict, Any, Tuple
-from services.ic_sim.app.models.schemas import CompanyData, RuleFilterResult
+from app.models.schemas import CompanyData, RuleFilterResult
 
 # Define investment criteria
 ALLOWED_SECTORS = ["fintech", "healthtech", "enterprise", "ai", "deeptech"]

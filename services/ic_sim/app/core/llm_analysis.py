@@ -13,7 +13,7 @@ import logging
 
 from openai import OpenAI
 
-from services.ic_sim.app.models.schemas import (
+from app.models.schemas import (
     CompanyData, ICResult, ICDecision, TOTStep
 )
 

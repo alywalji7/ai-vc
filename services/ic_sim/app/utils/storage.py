@@ -9,7 +9,7 @@ import os
 import json
 import logging
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from minio import Minio
 from minio.error import S3Error
@@ -33,13 +33,19 @@ class MinioLogger:
     
     def __init__(self):
         """Initialize the Minio client."""
-        self.client = Minio(
-            endpoint=MINIO_ENDPOINT,
-            access_key=MINIO_ACCESS_KEY,
-            secret_key=MINIO_SECRET_KEY,
-            secure=MINIO_SECURE
-        )
-        self._ensure_bucket_exists()
+        try:
+            self.client = Minio(
+                endpoint=MINIO_ENDPOINT,
+                access_key=MINIO_ACCESS_KEY,
+                secret_key=MINIO_SECRET_KEY,
+                secure=MINIO_SECURE
+            )
+            self._ensure_bucket_exists()
+            self.minio_available = True
+        except Exception as e:
+            logger.warning(f"Minio initialization failed: {str(e)}")
+            logger.warning("Minio storage is not available. Falling back to console logging only.")
+            self.minio_available = False
     
     def _ensure_bucket_exists(self):
         """Ensure that the logging bucket exists, creating it if necessary."""
@@ -54,7 +60,7 @@ class MinioLogger:
             logger.error(f"Error ensuring bucket exists: {str(e)}")
             # Don't fail if bucket creation fails - we'll just log to console instead
     
-    def log_analysis(self, company_id: str, analysis_data: Dict[str, Any]) -> str:
+    def log_analysis(self, company_id: str, analysis_data: Dict[str, Any]) -> Optional[str]:
         """
         Log the complete analysis chain to Minio for audit purposes.
         
@@ -63,19 +69,25 @@ class MinioLogger:
             analysis_data: Complete analysis data
             
         Returns:
-            Object path in Minio
+            Object path in Minio or None if logging failed
         """
+        # Prepare timestamp-based object name for return even if Minio isn't available
+        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        object_name = f"{company_id}/{timestamp}_analysis.json"
+        
+        # Convert analysis data to JSON
+        data_json = json.dumps(analysis_data, indent=2)
+        
+        # Log to console as backup
+        logger.info(f"Logging analysis for company {company_id}")
+        
+        # Check if Minio is available
+        if not hasattr(self, 'minio_available') or not self.minio_available:
+            logger.info("Minio not available, logging to console only")
+            logger.info(f"Analysis for company {company_id}: {json.dumps(analysis_data)}")
+            return None
+            
         try:
-            # Prepare timestamp-based object name
-            timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
-            object_name = f"{company_id}/{timestamp}_analysis.json"
-            
-            # Convert analysis data to JSON
-            data_json = json.dumps(analysis_data, indent=2)
-            
-            # Log to console as backup
-            logger.info(f"Logging analysis for company {company_id}")
-            
             # Upload to Minio
             self.client.put_object(
                 bucket_name=IC_LOGS_BUCKET,
@@ -88,7 +100,7 @@ class MinioLogger:
             logger.info(f"Analysis logged to Minio: {object_name}")
             return object_name
             
-        except S3Error as e:
+        except Exception as e:
             logger.error(f"Error logging to Minio: {str(e)}")
             logger.info("Falling back to console logging")
             # Log to console as fallback
