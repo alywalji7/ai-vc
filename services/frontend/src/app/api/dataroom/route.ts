@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8000';
-console.log('BACKEND_URL is set to:', BACKEND_URL);
 
 /**
  * GET handler for retrieving a list of all data rooms
@@ -11,14 +10,14 @@ export async function GET(request: NextRequest) {
     // Build the API URL
     const apiUrl = `${BACKEND_URL}/api/dataroom`;
     
-    console.log('Frontend API trying to fetch from:', apiUrl);
-    
-    // Fetch data from the backend with additional options
+    // Fetch data from the backend with cache control to prevent stale data
     const response = await fetch(apiUrl, {
       headers: {
         'Accept': 'application/json',
         'Cache-Control': 'no-cache'
       },
+      // Adding cache: 'no-store' to prevent any caching issues
+      cache: 'no-store'
     });
     
     if (!response.ok) {
@@ -30,7 +29,6 @@ export async function GET(request: NextRequest) {
     
     // Return the data
     const data = await response.json();
-    console.log('Frontend API received from backend:', data);
     return NextResponse.json(data);
   } catch (error) {
     console.error('Error in dataroom API route:', error);
