@@ -1,0 +1,48 @@
+---
+# Scheduled ingestion tasks
+# Format: name, cron_schedule, task, args, kwargs
+#
+# Cron format: minute hour day-of-month month day-of-week
+# Fields can contain ranges (e.g., "1-3"), lists (e.g., "1,2,3"), wildcards ("*"),
+# and step values (e.g., "*/2").
+
+tasks:
+  - name: github-openai-hourly
+    description: Ingest OpenAI GitHub organization data hourly
+    cron: "0 * * * *"  # At minute 0 of every hour
+    task: scheduler.tasks.ingest_github
+    args: ["openai"]
+    kwargs: {}
+    enabled: true
+    
+  - name: github-microsoft-daily
+    description: Ingest Microsoft GitHub organization data daily
+    cron: "0 0 * * *"  # At 00:00 (midnight) every day
+    task: scheduler.tasks.ingest_github
+    args: ["microsoft"]
+    kwargs: {}
+    enabled: true
+    
+  - name: crunchbase-openai-daily
+    description: Ingest OpenAI Crunchbase data daily
+    cron: "0 1 * * *"  # At 01:00 every day
+    task: scheduler.tasks.ingest_crunchbase
+    args: ["openai"]
+    kwargs: {}
+    enabled: true
+    
+  - name: crunchbase-nvidia-weekly
+    description: Ingest NVIDIA Crunchbase data weekly
+    cron: "0 2 * * 0"  # At 02:00 on Sunday
+    task: scheduler.tasks.ingest_crunchbase
+    args: ["nvidia"]
+    kwargs: {}
+    enabled: true
+    
+  - name: cleanup-old-data-monthly
+    description: Clean up data older than 3 months
+    cron: "0 3 1 * *"  # At 03:00 on the 1st of each month
+    task: scheduler.tasks.cleanup_old_data
+    args: [90]  # days to keep
+    kwargs: {}
+    enabled: true
