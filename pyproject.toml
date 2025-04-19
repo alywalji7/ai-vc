@@ -26,6 +26,7 @@ qdrant-client = "^1.13.3"
 huggingface-hub = "^0.30.2"
 pytest = "^8.3.5"
 numpy = "^2.2.4"
+markdown = "^3.8"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"

@@ -8,7 +8,12 @@ from sqlalchemy.orm import Session
 from sqlalchemy.ext.declarative import declarative_base
 from pydantic import BaseModel
 
+from app.api.dataroom import router as dataroom_router
+
 router = APIRouter()
+
+# Include the dataroom router
+router.include_router(dataroom_router)
 
 # Database dependency
 def get_db():
