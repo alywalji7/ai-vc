@@ -14,6 +14,7 @@ from typing import List, Dict, Any, Optional
 from datetime import datetime
 
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
 # Configure logging
@@ -28,6 +29,15 @@ app = FastAPI(
     title="Scheduler Service API",
     description="API for the Scheduler Service",
     version="0.1.0",
+)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # In production, you'd restrict this to your frontend domain
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Path to crontab file
