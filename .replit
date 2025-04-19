@@ -32,6 +32,10 @@ args = "Scheduler Service"
 task = "workflow.run"
 args = "Similarity API Service"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Radar Service"
+
 [[workflows.workflow]]
 name = "Frontend Service"
 author = "agent"
@@ -107,6 +111,21 @@ task = "shell.exec"
 args = "cd services/similarity_api && pip install -r requirements.txt && python main.py"
 waitForPort = 8090
 
+[[workflows.workflow]]
+name = "Radar Service"
+author = "agent"
+
+[workflows.workflow.metadata]
+agentRequireRestartOnSave = false
+
+[[workflows.workflow.tasks]]
+task = "packager.installForAll"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd services/radar && pip install -r requirements.txt && python main.py"
+waitForPort = 8095
+
 [deployment]
 run = ["sh", "-c", "cd services/frontend && npm install && npm run dev -- -p 5000"]
 
@@ -133,6 +152,10 @@ externalPort = 3002
 [[ports]]
 localPort = 8090
 externalPort = 3003
+
+[[ports]]
+localPort = 8095
+externalPort = 4200
 
 [[ports]]
 localPort = 9090

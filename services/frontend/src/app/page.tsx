@@ -52,7 +52,7 @@ export default function Home() {
           </p>
           <div className="text-sm text-gray-500">
             <div className="mb-1"><span className="font-semibold">API:</span> http://localhost:8095</div>
-            <div><span className="font-semibold">Endpoint:</span> <code className="bg-gray-100 px-1 py-0.5 rounded">/radar/daily_shortlist?limit=N</code></div>
+            <div><span className="font-semibold">UI:</span> <Link href="/radar" className="text-blue-500 hover:underline">Investment Opportunity Radar</Link></div>
           </div>
         </div>
       </div>

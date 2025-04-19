@@ -27,14 +27,29 @@ def main():
     
     logger.info(f"Starting Deal-Flow Radar server at http://{host}:{port}")
     
-    # Start the server
-    uvicorn.run(
-        "app.app:app",
-        host=host,
-        port=port,
-        reload=True,
-        log_level="info",
-    )
+    # Start the server with the correct module path
+    # When running from within the services/radar directory, use app.app:app
+    # Otherwise use the full module path
+    try:
+        module_path = "app.app:app"
+        uvicorn.run(
+            module_path,
+            host=host,
+            port=port,
+            reload=True,
+            log_level="info",
+        )
+    except ImportError as e:
+        logger.error(f"Error: {e}")
+        logger.info("Trying alternate module path...")
+        module_path = "services.radar.app.app:app"
+        uvicorn.run(
+            module_path,
+            host=host,
+            port=port,
+            reload=True,
+            log_level="info",
+        )
 
 
 if __name__ == "__main__":
