@@ -1,6 +1,17 @@
 version: '3.8'
 
 services:
+  redis:
+    image: redis:7.0-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
   # Backend API service
   backend:
     build:
@@ -47,14 +58,7 @@ services:
       - ./infra/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
     restart: unless-stopped
 
-  # Redis cache
-  redis:
-    image: redis:latest
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis-data:/data
-    restart: unless-stopped
+  # Redis cache is already defined above
 
   # Qdrant vector database
   qdrant:
@@ -79,9 +83,63 @@ services:
       - minio-data:/data
     command: server /data --console-address ":9001"
     restart: unless-stopped
+    
+  # Scheduler service
+  scheduler:
+    build:
+      context: ./services/scheduler
+    ports:
+      - "8081:8000"  # API
+      - "5555:5555"  # Flower
+    depends_on:
+      - redis
+      - postgres
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgresql://${PGUSER}:${PGPASSWORD}@postgres:5432/${PGDATABASE}
+      - GRAPH_INGEST_API_URL=http://graph_ingest:8080
+      - CRONTAB_PATH=/app/crontab.yml
+    volumes:
+      - ./services/scheduler:/app
+    restart: unless-stopped
+    
+  # Prometheus for metrics collection
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./infra/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+      - prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/etc/prometheus/console_libraries'
+      - '--web.console.templates=/etc/prometheus/consoles'
+      - '--web.enable-lifecycle'
+    restart: unless-stopped
+    
+  # Grafana for visualization
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./infra/grafana/provisioning:/etc/grafana/provisioning
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards
+      - grafana-data:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+      - GF_USERS_ALLOW_SIGN_UP=false
+    restart: unless-stopped
+    depends_on:
+      - prometheus
 
 volumes:
   postgres-data:
   redis-data:
   qdrant-data:
   minio-data:
+  prometheus-data:
+  grafana-data:
