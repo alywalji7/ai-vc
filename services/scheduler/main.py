@@ -94,10 +94,11 @@ async def get_tasks():
         with open(CRONTAB_PATH, "r") as f:
             crontab = yaml.safe_load(f)
         
-        task_configs = crontab.get("tasks", [])
+        task_configs = crontab.get("tasks", {})
         tasks = []
         
-        for task_config in task_configs:
+        # Iterate through the dictionary items (key, value pairs)
+        for task_id, task_config in task_configs.items():
             tasks.append(
                 Task(
                     name=task_config.get("name", ""),
@@ -134,9 +135,10 @@ async def get_task(task_name: str):
         with open(CRONTAB_PATH, "r") as f:
             crontab = yaml.safe_load(f)
         
-        task_configs = crontab.get("tasks", [])
+        task_configs = crontab.get("tasks", {})
         
-        for task_config in task_configs:
+        # Search for the task by name
+        for task_id, task_config in task_configs.items():
             if task_config.get("name") == task_name:
                 return Task(
                     name=task_config.get("name", ""),
@@ -174,9 +176,10 @@ async def run_task(task_name: str):
         with open(CRONTAB_PATH, "r") as f:
             crontab = yaml.safe_load(f)
         
-        task_configs = crontab.get("tasks", [])
+        task_configs = crontab.get("tasks", {})
         
-        for task_config in task_configs:
+        # Search for the task by name in dictionary items
+        for task_id, task_config in task_configs.items():
             if task_config.get("name") == task_name:
                 # Check if task is enabled
                 if not task_config.get("enabled", True):

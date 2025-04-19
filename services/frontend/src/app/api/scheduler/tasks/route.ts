@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-const SCHEDULER_API_URL = 'http://localhost:8085';
+// Use the internal service name within Replit
+const SCHEDULER_API_URL = 'http://0.0.0.0:8085';
 
 export async function GET(req: NextRequest) {
   try {
