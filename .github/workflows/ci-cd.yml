@@ -1,0 +1,130 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+    
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: 1.5.1
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+    
+    - name: Install Python dependencies
+      run: |
+        cd services/backend
+        poetry install --no-interaction --no-root
+    
+    - name: Run Python tests
+      run: |
+        cd services/backend
+        poetry run pytest -v
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: 'services/frontend/package-lock.json'
+    
+    - name: Install Node.js dependencies
+      run: |
+        cd services/frontend
+        npm ci
+    
+    - name: Run Frontend tests
+      run: |
+        cd services/frontend
+        npm test
+
+  lint:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Python 3.12
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.12'
+    
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: 1.5.1
+        virtualenvs-create: true
+        virtualenvs-in-project: true
+    
+    - name: Install Python dependencies
+      run: |
+        cd services/backend
+        poetry install --no-interaction --no-root
+    
+    - name: Lint Python code
+      run: |
+        cd services/backend
+        poetry run ruff .
+        poetry run black --check .
+    
+    - name: Set up Node.js
+      uses: actions/setup-node@v3
+      with:
+        node-version: '18'
+        cache: 'npm'
+        cache-dependency-path: 'services/frontend/package-lock.json'
+    
+    - name: Install Node.js dependencies
+      run: |
+        cd services/frontend
+        npm ci
+    
+    - name: Lint Frontend code
+      run: |
+        cd services/frontend
+        npm run lint
+
+  build-and-push:
+    needs: [test, lint]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+    
+    - name: Login to Docker Hub
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+    
+    - name: Build and push Backend image
+      uses: docker/build-push-action@v4
+      with:
+        context: ./services/backend
+        push: true
+        tags: ${{ secrets.DOCKERHUB_USERNAME }}/polyglot-backend:latest
+    
+    - name: Build and push Frontend image
+      uses: docker/build-push-action@v4
+      with:
+        context: ./services/frontend
+        push: true
+        tags: ${{ secrets.DOCKERHUB_USERNAME }}/polyglot-frontend:latest
