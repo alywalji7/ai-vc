@@ -1,25 +1,25 @@
+"""
+Main entry point for the backend service.
+"""
+
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-
 from app import models
+from app.db import engine
 from app.api.routes import router as api_router
-from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
 
-# Create FastAPI app
-app = FastAPI(
-    title="Polyglot Monorepo Backend",
-    description="Backend services for the polyglot monorepo",
-    version="0.1.0",
-)
+models.Base.metadata.create_all(bind=engine)
 
-# CORS configuration
+app = FastAPI()
+
+# Configure CORS
 origins = [
-    "http://localhost:5000",  # Frontend service
-    "http://localhost:3000",  # Development frontend
-    "http://frontend:5000",   # Docker frontend service
+    "http://localhost:3000",
+    "http://localhost:5000",
+    "http://localhost:8000",
+    "http://localhost",
+    "https://localhost"
 ]
 
 app.add_middleware(
@@ -30,31 +30,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Database setup
-DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/postgres")
-
-engine = create_engine(
-    DATABASE_URL,
-    pool_pre_ping=True,
-    pool_recycle=300,
-)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
-
-# Create all tables in the database
-models.Base.metadata.create_all(bind=engine)
-
-# Include API router
-app.include_router(api_router, prefix="/api")
-
+# Root endpoint
 @app.get("/")
 async def root():
-    return {"message": "Welcome to the Polyglot Monorepo Backend API"}
+    return {"message": "Backend API Service"}
 
+# Health check endpoint
 @app.get("/health")
 async def health_check():
     return {"status": "healthy"}
 
+# Include API routes
+app.include_router(api_router, prefix="/api")
+
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(
+        "main:app", 
+        host="0.0.0.0", 
+        port=int(os.environ.get("PORT", 8000)), 
+        reload=True
+    )
