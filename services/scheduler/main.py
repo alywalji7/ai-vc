@@ -1,146 +1,200 @@
 """
-Main entry point for the scheduler service.
+Main entry point for the scheduler service - simplified version.
 
-This module starts all components of the scheduler service:
-1. FastAPI server for API endpoints
-2. Celery worker for task execution
-3. Prometheus metrics exporter
-4. Task scheduler
+This module provides a FastAPI server for:
+1. Listing scheduled tasks from crontab.yml
+2. Viewing task details
+3. Triggering manual task execution
 """
-
 import os
-import subprocess
-import threading
-import time
+import yaml
 import logging
-import signal
-import sys
+import uvicorn
+from typing import List, Dict, Any, Optional
+from datetime import datetime
+
+from fastapi import FastAPI, HTTPException
+from pydantic import BaseModel
 
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 logger = logging.getLogger(__name__)
 
-# Set default Redis URL if not provided in environment
-REDIS_URL = os.environ.get('REDIS_URL', 'redis://localhost:6379/0')
+# Create FastAPI app
+app = FastAPI(
+    title="Scheduler Service API",
+    description="API for the Scheduler Service",
+    version="0.1.0",
+)
 
-# Define processes to start
-processes = []
+# Path to crontab file
+CRONTAB_PATH = os.environ.get("CRONTAB_PATH", "crontab.yml")
 
-def start_api_server():
-    """Start the FastAPI server."""
-    api_cmd = ['python', '-m', 'uvicorn', 'api:app', '--host', '0.0.0.0', '--port', '8000']
-    logger.info(f"Starting API server: {' '.join(api_cmd)}")
-    return subprocess.Popen(api_cmd, cwd=os.path.dirname(os.path.abspath(__file__)))
 
-def start_celery_worker():
-    """Start the Celery worker."""
-    worker_cmd = [
-        'celery', '-A', 'tasks', 'worker',
-        '--loglevel=INFO',
-        '--concurrency=4',
-        '--without-gossip',  # Disable gossip for better performance
-        '--without-mingle',  # Disable mingle for better performance
-        '--without-heartbeat'  # Disable heartbeat for better performance
-    ]
-    logger.info(f"Starting Celery worker: {' '.join(worker_cmd)}")
-    return subprocess.Popen(worker_cmd, cwd=os.path.dirname(os.path.abspath(__file__)))
+class Task(BaseModel):
+    """Model for a task configuration."""
+    name: str
+    description: Optional[str] = None
+    cron: str
+    task: str
+    args: List[Any] = []
+    kwargs: Dict[str, Any] = {}
+    enabled: bool = True
 
-def start_flower():
-    """Start Flower for monitoring Celery tasks."""
-    flower_cmd = [
-        'celery', '-A', 'tasks', 'flower',
-        '--port=5555',
-        '--broker=' + REDIS_URL
-    ]
-    logger.info(f"Starting Flower: {' '.join(flower_cmd)}")
-    return subprocess.Popen(flower_cmd, cwd=os.path.dirname(os.path.abspath(__file__)))
 
-def start_scheduler():
-    """Start the task scheduler."""
-    scheduler_cmd = ['python', 'scheduler.py']
-    logger.info(f"Starting scheduler: {' '.join(scheduler_cmd)}")
-    return subprocess.Popen(scheduler_cmd, cwd=os.path.dirname(os.path.abspath(__file__)))
+@app.get("/", tags=["general"])
+async def root():
+    """Root endpoint with service information."""
+    return {
+        "name": "Scheduler Service",
+        "version": "0.1.0",
+        "description": "Service for scheduling and executing periodic tasks",
+    }
 
-def start_prometheus():
-    """Start Prometheus server."""
-    # In production, you would typically run Prometheus as a separate service
-    # This is a placeholder for local development
-    prometheus_cmd = ['echo', 'Prometheus server would start here']
-    logger.info("Prometheus metrics exporter already started by scheduler")
-    return None
 
-def start_grafana():
-    """Start Grafana server."""
-    # In production, you would typically run Grafana as a separate service
-    # This is a placeholder for local development
-    grafana_cmd = ['echo', 'Grafana server would start here']
-    logger.info("Grafana would start here in a real deployment")
-    return None
-
-def cleanup(signum, frame):
-    """Clean up processes on exit."""
-    logger.info(f"Received signal {signum}, shutting down services...")
+@app.get("/health", tags=["general"])
+async def health_check():
+    """Health check endpoint."""
+    crontab_status = "ok" if os.path.exists(CRONTAB_PATH) else "missing"
     
-    for proc in processes:
-        if proc and proc.poll() is None:  # If process is still running
-            logger.info(f"Terminating process with PID {proc.pid}")
-            proc.terminate()
-    
-    # Wait for processes to terminate gracefully
-    time.sleep(2)
-    
-    # Force kill any remaining processes
-    for proc in processes:
-        if proc and proc.poll() is None:
-            logger.info(f"Force killing process with PID {proc.pid}")
-            proc.kill()
-    
-    logger.info("All services shut down")
-    sys.exit(0)
+    return {
+        "status": "ok",
+        "components": {
+            "crontab": crontab_status,
+        },
+        "timestamp": datetime.now().isoformat(),
+    }
 
-def start_services():
-    """Start all scheduler services."""
-    global processes
+
+@app.get("/tasks", response_model=List[Task], tags=["tasks"])
+async def get_tasks():
+    """
+    Get all scheduled tasks.
     
-    # Register signal handlers for graceful shutdown
-    signal.signal(signal.SIGTERM, cleanup)
-    signal.signal(signal.SIGINT, cleanup)
+    Returns:
+        List of task configurations
+    """
+    if not os.path.exists(CRONTAB_PATH):
+        return []
     
     try:
-        # Start all components
-        processes = [
-            start_api_server(),
-            start_celery_worker(),
-            start_flower(),
-            start_scheduler(),
-            start_prometheus(),
-            start_grafana()
-        ]
+        with open(CRONTAB_PATH, "r") as f:
+            crontab = yaml.safe_load(f)
         
-        # Filter out None processes
-        processes = [p for p in processes if p is not None]
+        task_configs = crontab.get("tasks", [])
+        tasks = []
         
-        logger.info("All services started")
+        for task_config in task_configs:
+            tasks.append(
+                Task(
+                    name=task_config.get("name", ""),
+                    description=task_config.get("description", ""),
+                    cron=task_config.get("cron", ""),
+                    task=task_config.get("task", ""),
+                    args=task_config.get("args", []),
+                    kwargs=task_config.get("kwargs", {}),
+                    enabled=task_config.get("enabled", True),
+                )
+            )
         
-        # Keep the main thread alive
-        while all(p.poll() is None for p in processes if p is not None):
-            time.sleep(1)
-        
-        # If we get here, at least one process has exited
-        for p in processes:
-            if p and p.poll() is not None:
-                logger.error(f"Process with PID {p.pid} exited with code {p.returncode}")
-        
-        # Cleanup all processes
-        cleanup(signal.SIGTERM, None)
-        
+        return tasks
     except Exception as e:
-        logger.error(f"Error starting services: {e}")
-        cleanup(signal.SIGTERM, None)
+        logger.error(f"Error loading crontab: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error loading crontab: {str(e)}")
+
+
+@app.get("/tasks/{task_name}", response_model=Task, tags=["tasks"])
+async def get_task(task_name: str):
+    """
+    Get a specific task by name.
+    
+    Args:
+        task_name: Name of the task
+        
+    Returns:
+        Task configuration
+    """
+    if not os.path.exists(CRONTAB_PATH):
+        raise HTTPException(status_code=404, detail="Crontab file not found")
+    
+    try:
+        with open(CRONTAB_PATH, "r") as f:
+            crontab = yaml.safe_load(f)
+        
+        task_configs = crontab.get("tasks", [])
+        
+        for task_config in task_configs:
+            if task_config.get("name") == task_name:
+                return Task(
+                    name=task_config.get("name", ""),
+                    description=task_config.get("description", ""),
+                    cron=task_config.get("cron", ""),
+                    task=task_config.get("task", ""),
+                    args=task_config.get("args", []),
+                    kwargs=task_config.get("kwargs", {}),
+                    enabled=task_config.get("enabled", True),
+                )
+        
+        raise HTTPException(status_code=404, detail=f"Task '{task_name}' not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error loading crontab: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error loading crontab: {str(e)}")
+
+
+@app.post("/tasks/{task_name}/run", tags=["tasks"])
+async def run_task(task_name: str):
+    """
+    Simulate manual task execution (simplified version).
+    
+    Args:
+        task_name: Name of the task
+        
+    Returns:
+        Task execution result
+    """
+    if not os.path.exists(CRONTAB_PATH):
+        raise HTTPException(status_code=404, detail="Crontab file not found")
+    
+    try:
+        with open(CRONTAB_PATH, "r") as f:
+            crontab = yaml.safe_load(f)
+        
+        task_configs = crontab.get("tasks", [])
+        
+        for task_config in task_configs:
+            if task_config.get("name") == task_name:
+                # Check if task is enabled
+                if not task_config.get("enabled", True):
+                    raise HTTPException(
+                        status_code=400,
+                        detail=f"Task '{task_name}' is disabled",
+                    )
+                
+                # In this simplified version, we just simulate task execution
+                return {
+                    "status": "success",
+                    "message": f"Task '{task_name}' execution simulated",
+                    "task": task_config,
+                }
+        
+        raise HTTPException(status_code=404, detail=f"Task '{task_name}' not found")
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error running task: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error running task: {str(e)}")
+
+
+def main():
+    """Start the FastAPI server."""
+    logger.info("Starting scheduler service API")
+    uvicorn.run(app, host="0.0.0.0", port=8085)
+
 
 if __name__ == "__main__":
-    logger.info("Starting scheduler services")
-    start_services()
+    main()

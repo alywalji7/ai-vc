@@ -222,7 +222,7 @@ def start_scheduler() -> None:
     Returns:
         None
     """
-    from services.scheduler.celery_app import app
+    from celery_app import app
     
     # Start Prometheus metrics server
     logger.info("Starting Prometheus metrics server on port %d", PROMETHEUS_PORT)

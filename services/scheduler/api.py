@@ -7,28 +7,29 @@ including endpoints to:
 - View scheduled tasks
 - Check service health
 """
-
 import os
 from typing import List, Dict, Any, Optional
-from fastapi import FastAPI, HTTPException, BackgroundTasks
+from datetime import datetime
+
+import fastapi
+import pydantic
+from fastapi import FastAPI, BackgroundTasks
 from pydantic import BaseModel
-import yaml
-import json
 from celery.result import AsyncResult
+
 from celery_app import app as celery_app
+import tasks
 
-# Path to the crontab.yml file
-CRONTAB_PATH = os.environ.get('CRONTAB_PATH', 'services/scheduler/crontab.yml')
-
-# Create FastAPI application
+# Create FastAPI app
 app = FastAPI(
-    title="ETL Scheduler API",
-    description="API for managing scheduled ETL tasks",
-    version="0.1.0"
+    title="Scheduler Service API",
+    description="API for the Scheduler Service",
+    version="0.1.0",
 )
 
-# Define data models
+
 class TaskBase(BaseModel):
+    """Base model for task configuration."""
     name: str
     description: Optional[str] = None
     cron: str
@@ -37,35 +38,61 @@ class TaskBase(BaseModel):
     kwargs: Dict[str, Any] = {}
     enabled: bool = True
 
+
 class TaskCreate(TaskBase):
+    """Model for creating a new task."""
     pass
 
+
 class Task(TaskBase):
+    """Model for a task with execution information."""
     next_run: Optional[str] = None
     last_run: Optional[str] = None
     last_status: Optional[str] = None
 
+
 class TaskResult(BaseModel):
+    """Model for a task execution result."""
     task_id: str
     status: str
     result: Optional[Any] = None
 
-# API endpoints
-@app.get("/")
+
+@app.get("/", tags=["general"])
 async def root():
     """Root endpoint with service information."""
     return {
-        "service": "ETL Scheduler",
+        "name": "Scheduler Service",
         "version": "0.1.0",
-        "status": "running"
+        "description": "Service for scheduling and executing periodic tasks",
     }
 
-@app.get("/health")
+
+@app.get("/health", tags=["general"])
 async def health_check():
     """Health check endpoint."""
-    return {"status": "healthy"}
+    # Check if we can communicate with Celery
+    try:
+        celery_app.control.ping()
+        celery_status = "ok"
+    except Exception:
+        celery_status = "error"
+    
+    # Load crontab file
+    crontab_path = os.environ.get("CRONTAB_PATH", "crontab.yml")
+    crontab_status = "ok" if os.path.exists(crontab_path) else "missing"
+    
+    return {
+        "status": "ok" if celery_status == "ok" and crontab_status == "ok" else "error",
+        "components": {
+            "celery": celery_status,
+            "crontab": crontab_status,
+        },
+        "timestamp": datetime.now().isoformat(),
+    }
 
-@app.get("/tasks", response_model=List[Task])
+
+@app.get("/tasks", response_model=List[Task], tags=["tasks"])
 async def get_tasks():
     """
     Get all scheduled tasks.
@@ -73,19 +100,43 @@ async def get_tasks():
     Returns:
         List of task configurations
     """
-    try:
-        with open(CRONTAB_PATH, 'r') as f:
-            config = yaml.safe_load(f)
-        
-        tasks = []
-        for task_config in config.get('tasks', []):
-            tasks.append(Task(**task_config))
-        
-        return tasks
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error loading tasks: {str(e)}")
+    # Load crontab file
+    crontab_path = os.environ.get("CRONTAB_PATH", "crontab.yml")
+    
+    if not os.path.exists(crontab_path):
+        return []
+    
+    # This is a simplification - in a real system, tasks would be stored in a database
+    # and their status would be tracked persistently
+    import yaml
+    with open(crontab_path, "r") as f:
+        crontab = yaml.safe_load(f)
+    
+    task_configs = crontab.get("tasks", [])
+    
+    # Add execution information
+    tasks_with_info = []
+    for task_config in task_configs:
+        # Get task information from Redis (simplified)
+        tasks_with_info.append(
+            Task(
+                name=task_config.get("name", ""),
+                description=task_config.get("description", ""),
+                cron=task_config.get("cron", ""),
+                task=task_config.get("task", ""),
+                args=task_config.get("args", []),
+                kwargs=task_config.get("kwargs", {}),
+                enabled=task_config.get("enabled", True),
+                next_run="Not implemented",  # Would require croniter to calculate
+                last_run="Unknown",  # Would be stored in Redis/database
+                last_status="Unknown",  # Would be stored in Redis/database
+            )
+        )
+    
+    return tasks_with_info
 
-@app.get("/tasks/{task_name}", response_model=Task)
+
+@app.get("/tasks/{task_name}", response_model=Task, tags=["tasks"])
 async def get_task(task_name: str):
     """
     Get a specific task by name.
@@ -96,21 +147,39 @@ async def get_task(task_name: str):
     Returns:
         Task configuration
     """
-    try:
-        with open(CRONTAB_PATH, 'r') as f:
-            config = yaml.safe_load(f)
-        
-        for task_config in config.get('tasks', []):
-            if task_config['name'] == task_name:
-                return Task(**task_config)
-        
-        raise HTTPException(status_code=404, detail=f"Task '{task_name}' not found")
-    except Exception as e:
-        if isinstance(e, HTTPException):
-            raise
-        raise HTTPException(status_code=500, detail=f"Error getting task: {str(e)}")
+    # Load crontab file
+    crontab_path = os.environ.get("CRONTAB_PATH", "crontab.yml")
+    
+    if not os.path.exists(crontab_path):
+        raise fastapi.HTTPException(status_code=404, detail="Crontab file not found")
+    
+    # This is a simplification - in a real system, tasks would be stored in a database
+    import yaml
+    with open(crontab_path, "r") as f:
+        crontab = yaml.safe_load(f)
+    
+    task_configs = crontab.get("tasks", [])
+    
+    # Find task by name
+    for task_config in task_configs:
+        if task_config.get("name") == task_name:
+            return Task(
+                name=task_config.get("name", ""),
+                description=task_config.get("description", ""),
+                cron=task_config.get("cron", ""),
+                task=task_config.get("task", ""),
+                args=task_config.get("args", []),
+                kwargs=task_config.get("kwargs", {}),
+                enabled=task_config.get("enabled", True),
+                next_run="Not implemented",  # Would require croniter to calculate
+                last_run="Unknown",  # Would be stored in Redis/database
+                last_status="Unknown",  # Would be stored in Redis/database
+            )
+    
+    raise fastapi.HTTPException(status_code=404, detail=f"Task '{task_name}' not found")
 
-@app.post("/tasks/{task_name}/run", response_model=TaskResult)
+
+@app.post("/tasks/{task_name}/run", response_model=TaskResult, tags=["tasks"])
 async def run_task(task_name: str, background_tasks: BackgroundTasks):
     """
     Trigger immediate execution of a task.
@@ -121,38 +190,48 @@ async def run_task(task_name: str, background_tasks: BackgroundTasks):
     Returns:
         Task execution result
     """
-    try:
-        with open(CRONTAB_PATH, 'r') as f:
-            config = yaml.safe_load(f)
-        
-        for task_config in config.get('tasks', []):
-            if task_config['name'] == task_name:
-                # Get task path, args, and kwargs
-                task_path = task_config['task']
-                args = task_config.get('args', [])
-                kwargs = task_config.get('kwargs', {})
-                
-                # Run the task asynchronously
-                result = celery_app.send_task(
-                    task_path,
-                    args=args,
-                    kwargs=kwargs,
-                    task_id=f"{task_name}-immediate-{os.urandom(4).hex()}"
+    # Load crontab file
+    crontab_path = os.environ.get("CRONTAB_PATH", "crontab.yml")
+    
+    if not os.path.exists(crontab_path):
+        raise fastapi.HTTPException(status_code=404, detail="Crontab file not found")
+    
+    # This is a simplification - in a real system, tasks would be stored in a database
+    import yaml
+    with open(crontab_path, "r") as f:
+        crontab = yaml.safe_load(f)
+    
+    task_configs = crontab.get("tasks", [])
+    
+    # Find task by name
+    for task_config in task_configs:
+        if task_config.get("name") == task_name:
+            # Execute task
+            task_path = task_config.get("task")
+            args = task_config.get("args", [])
+            kwargs = task_config.get("kwargs", {})
+            
+            # Check if task is enabled
+            if not task_config.get("enabled", True):
+                raise fastapi.HTTPException(
+                    status_code=400,
+                    detail=f"Task '{task_name}' is disabled",
                 )
-                
-                return TaskResult(
-                    task_id=result.id,
-                    status="PENDING",
-                    result=None
-                )
-        
-        raise HTTPException(status_code=404, detail=f"Task '{task_name}' not found")
-    except Exception as e:
-        if isinstance(e, HTTPException):
-            raise
-        raise HTTPException(status_code=500, detail=f"Error running task: {str(e)}")
+            
+            # Apply Celery task
+            task = celery_app.signature(task_path, args=args, kwargs=kwargs)
+            result = task.apply_async()
+            
+            return TaskResult(
+                task_id=result.id,
+                status="pending",
+                result=None,
+            )
+    
+    raise fastapi.HTTPException(status_code=404, detail=f"Task '{task_name}' not found")
 
-@app.get("/tasks/results/{task_id}", response_model=TaskResult)
+
+@app.get("/tasks/results/{task_id}", response_model=TaskResult, tags=["tasks"])
 async def get_task_result(task_id: str):
     """
     Get the result of a task execution.
@@ -163,44 +242,36 @@ async def get_task_result(task_id: str):
     Returns:
         Task execution result
     """
-    try:
-        result = AsyncResult(task_id, app=celery_app)
-        
-        # Check the task status
-        if result.ready():
-            if result.successful():
-                # Convert to JSON-serializable format
-                task_result = result.get()
-                if isinstance(task_result, dict):
-                    # Ensure result is JSON serializable
-                    return TaskResult(
-                        task_id=task_id,
-                        status="SUCCESS",
-                        result=task_result
-                    )
-                else:
-                    # Convert to string if not serializable
-                    return TaskResult(
-                        task_id=task_id,
-                        status="SUCCESS",
-                        result=str(task_result)
-                    )
-            else:
-                return TaskResult(
-                    task_id=task_id,
-                    status="FAILURE",
-                    result=str(result.result)
-                )
-        else:
-            return TaskResult(
-                task_id=task_id,
-                status=result.state,
-                result=None
-            )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error getting task result: {str(e)}")
+    # Get AsyncResult from Celery
+    result = AsyncResult(task_id, app=celery_app)
+    
+    # Check task status
+    if result.status == "PENDING":
+        return TaskResult(
+            task_id=task_id,
+            status="pending",
+            result=None,
+        )
+    elif result.status == "SUCCESS":
+        return TaskResult(
+            task_id=task_id,
+            status="success",
+            result=result.get(),
+        )
+    elif result.status == "FAILURE":
+        return TaskResult(
+            task_id=task_id,
+            status="failure",
+            result=str(result.result),
+        )
+    else:
+        return TaskResult(
+            task_id=task_id,
+            status=result.status.lower(),
+            result=None,
+        )
 
-# Run the FastAPI application
+
 def start_api():
     """
     Start the FastAPI application.
@@ -209,10 +280,8 @@ def start_api():
     """
     import uvicorn
     
-    host = os.environ.get('HOST', '0.0.0.0')
-    port = int(os.environ.get('PORT', '8000'))
-    
-    uvicorn.run("api:app", host=host, port=port, reload=True)
+    uvicorn.run(app, host="0.0.0.0", port=8000)
+
 
 if __name__ == "__main__":
     start_api()

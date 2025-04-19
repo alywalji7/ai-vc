@@ -65,4 +65,4 @@ def track_task_metrics(task_func: Callable) -> Callable:
 
 
 # Import tasks to ensure they're registered with the Celery app
-import services.scheduler.tasks  # noqa: E402, F401
+import tasks  # noqa: E402, F401

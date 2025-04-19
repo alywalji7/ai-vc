@@ -9,7 +9,7 @@ from typing import Dict, Any
 
 import httpx
 
-from services.scheduler.celery_app import app, track_task_metrics
+from celery_app import app, track_task_metrics
 
 # Environment variables
 GRAPH_INGEST_API_URL = os.environ.get("GRAPH_INGEST_API_URL", "http://localhost:8080")
