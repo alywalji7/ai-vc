@@ -27,6 +27,8 @@ huggingface-hub = "^0.30.2"
 pytest = "^8.3.5"
 numpy = "^2.2.4"
 markdown = "^3.8"
+openai = "^1.75.0"
+minio = "^7.2.15"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"
