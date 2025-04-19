@@ -27,7 +27,7 @@ export default function SchedulerPage() {
     setLoading(true)
     setError(null)
     try {
-      const response = await fetch('http://localhost:8085/tasks')
+      const response = await fetch('/api/scheduler/tasks')
       if (!response.ok) {
         throw new Error(`Error fetching tasks: ${response.statusText}`)
       }
@@ -46,7 +46,7 @@ export default function SchedulerPage() {
     setTaskResult(null)
     setError(null)
     try {
-      const response = await fetch(`http://localhost:8085/tasks/${taskName}/run`, {
+      const response = await fetch(`/api/scheduler/tasks/${taskName}/run`, {
         method: 'POST'
       })
       if (!response.ok) {
