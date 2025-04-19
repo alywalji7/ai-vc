@@ -145,6 +145,55 @@ def predict_company_score(feature_vector: FeatureVector) -> float:
     except Exception as e:
         logger.error(f"Error during prediction: {str(e)}")
         return 0.0
+        
+        
+def enqueue_dataroom_task(company_id: str, score: float) -> bool:
+    """
+    Enqueue a task to build a data room for a company that has been green-lit by the radar.
+    A company is considered green-lit if its score is above 0.7.
+    
+    Args:
+        company_id: ID of the company
+        score: Radar score (0-1)
+        
+    Returns:
+        bool: True if task was enqueued, False otherwise
+    """
+    # Check if score is high enough to trigger data room build
+    if score < 0.7:
+        logger.info(f"Company {company_id} score {score:.2f} is below threshold, not enqueueing data room task")
+        return False
+    
+    try:
+        # In a production environment, we would use a proper task queue like Celery
+        # For now, we'll use a direct HTTP request to the scheduler service
+        scheduler_url = os.environ.get("SCHEDULER_URL", "http://localhost:8085")
+        task_endpoint = f"{scheduler_url}/tasks/run"
+        
+        logger.info(f"Enqueueing data room build for company {company_id} with score {score:.2f}")
+        
+        # Prepare the task data
+        task_data = {
+            "task_name": "build_dataroom",
+            "args": [company_id],
+            "kwargs": {"score": score}
+        }
+        
+        # Send the request to the scheduler
+        import httpx
+        with httpx.Client(timeout=10.0) as client:
+            response = client.post(task_endpoint, json=task_data)
+            
+            if response.status_code == 200:
+                logger.info(f"Successfully enqueued data room task for company {company_id}")
+                return True
+            else:
+                logger.error(f"Failed to enqueue task: {response.status_code} - {response.text}")
+                return False
+                
+    except Exception as e:
+        logger.error(f"Error enqueueing data room task for company {company_id}: {str(e)}")
+        return False
 
 
 def get_company_data_from_db(db: Session, limit: int = 100) -> List[Dict[str, Any]]:

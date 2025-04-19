@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import Shortlist, ShortlistItem, ModelMetadata
-from ..service import get_daily_shortlist, handle_mock_data, load_model
+from ..service import get_daily_shortlist, handle_mock_data, load_model, enqueue_dataroom_task
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -59,6 +59,17 @@ async def get_shortlist(
             # Try to get shortlist from the database
             shortlist_items = get_daily_shortlist(db, limit=limit)
             logger.info(f"Generated shortlist with {len(shortlist_items)} items")
+            
+            # Trigger data room builds for high-scoring companies
+            for item in shortlist_items:
+                if item.clos >= 0.7:  # Green-light threshold
+                    logger.info(f"Green-lighting company {item.company_id} with score {item.clos:.2f}")
+                    success = enqueue_dataroom_task(item.company_id, item.clos)
+                    if success:
+                        logger.info(f"Data room task enqueued for company {item.company_id}")
+                    else:
+                        logger.warning(f"Failed to enqueue data room task for company {item.company_id}")
+                
             return shortlist_items
         except Exception as db_error:
             # If database access fails, use mock data
