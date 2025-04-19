@@ -1,1 +1,3 @@
-"""Test package for embeddings."""
+"""
+Tests for embedding utilities.
+"""

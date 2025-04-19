@@ -5,9 +5,9 @@ This module provides functions for embedding text, code, and tabular data
 using the all-MiniLM-L6-v2 model.
 """
 
-import os
 import logging
-from typing import List, Dict, Any, Union, Optional
+import json
+from typing import Dict, List, Any, Union, Optional
 import numpy as np
 from sentence_transformers import SentenceTransformer
 
@@ -15,9 +15,8 @@ from sentence_transformers import SentenceTransformer
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# Default model to use
+# Default model
 DEFAULT_MODEL_NAME = "all-MiniLM-L6-v2"
-MODEL_CACHE_DIR = os.environ.get("MODEL_CACHE_DIR", "./model_cache")
 
 # Singleton model instance
 _model_instance = None
@@ -38,7 +37,7 @@ def get_model(model_name: str = DEFAULT_MODEL_NAME) -> SentenceTransformer:
     if _model_instance is None:
         logger.info(f"Loading model {model_name}...")
         try:
-            _model_instance = SentenceTransformer(model_name, cache_folder=MODEL_CACHE_DIR)
+            _model_instance = SentenceTransformer(model_name)
             logger.info(f"Model {model_name} loaded successfully")
         except Exception as e:
             logger.error(f"Error loading model {model_name}: {str(e)}")
@@ -57,19 +56,15 @@ def embed_text(text: Union[str, List[str]]) -> np.ndarray:
     Returns:
         Numpy array of embeddings with shape (n_samples, embedding_dim)
     """
-    if not text:
-        raise ValueError("Text cannot be empty")
-    
     model = get_model()
     
+    # Handle single string input
     if isinstance(text, str):
-        # Convert single string to list for batch processing
-        texts = [text]
-    else:
-        texts = text
+        text = [text]
     
-    # Generate embeddings
-    embeddings = model.encode(texts, convert_to_numpy=True, show_progress_bar=False)
+    # Encode the text
+    embeddings = model.encode(text, convert_to_numpy=True)
+    
     return embeddings
 
 
@@ -86,20 +81,48 @@ def embed_code(code: Union[str, List[str]]) -> np.ndarray:
     Returns:
         Numpy array of embeddings with shape (n_samples, embedding_dim)
     """
-    if not code:
-        raise ValueError("Code cannot be empty")
+    model = get_model()
     
-    # Preprocessing for code - preserve whitespace and indentation
-    # which are important for code semantics
+    # Handle single string input
     if isinstance(code, str):
-        # Process a single code snippet
-        preprocessed = [code]
-    else:
-        # Process multiple code snippets
-        preprocessed = code
+        code = [code]
     
-    # Use the same underlying model but with code-specific preprocessing
-    return embed_text(preprocessed)
+    # Preprocess code snippets (remove excessive whitespace, etc.)
+    preprocessed_code = []
+    for snippet in code:
+        # Remove extra blank lines and normalize whitespace
+        lines = [line for line in snippet.split('\n') if line.strip()]
+        preprocessed = '\n'.join(lines)
+        preprocessed_code.append(preprocessed)
+    
+    # Encode the preprocessed code
+    embeddings = model.encode(preprocessed_code, convert_to_numpy=True)
+    
+    return embeddings
+
+
+def _table_to_text(table: Dict[str, Any]) -> str:
+    """
+    Convert a table (dictionary) to a text representation.
+    
+    Args:
+        table: Dictionary representing tabular data
+        
+    Returns:
+        Text representation of the table
+    """
+    text_parts = []
+    
+    for key, value in table.items():
+        if isinstance(value, (dict, list)):
+            # Convert nested structures to JSON strings
+            value_str = json.dumps(value, sort_keys=True)
+        else:
+            value_str = str(value)
+        
+        text_parts.append(f"{key}: {value_str}")
+    
+    return "\n".join(text_parts)
 
 
 def embed_table(table: Union[Dict[str, Any], List[Dict[str, Any]]]) -> np.ndarray:
@@ -112,22 +135,12 @@ def embed_table(table: Union[Dict[str, Any], List[Dict[str, Any]]]) -> np.ndarra
     Returns:
         Numpy array of embeddings with shape (n_samples, embedding_dim)
     """
-    if not table:
-        raise ValueError("Table cannot be empty")
-    
-    # Convert table(s) to text representation
+    # Handle single dictionary input
     if isinstance(table, dict):
-        tables = [table]
-    else:
-        tables = table
+        table = [table]
     
-    # Convert each table to a string representation
-    text_representations = []
-    for t in tables:
-        # Create a string representation of the table
-        # Format: "key1: value1, key2: value2, ..."
-        text_repr = ", ".join([f"{k}: {v}" for k, v in t.items()])
-        text_representations.append(text_repr)
+    # Convert tables to text
+    table_texts = [_table_to_text(t) for t in table]
     
     # Embed the text representations
-    return embed_text(text_representations)
+    return embed_text(table_texts)

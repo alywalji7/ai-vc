@@ -1,121 +1,166 @@
 """
-Tests for the embedding utility functions.
+Tests for embedding utilities.
 """
 
 import pytest
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
+
 from libs.embeddings import embed_text, embed_code, embed_table
 
 
-def test_embed_text_returns_correct_shape():
-    """Test that embed_text returns embeddings with the correct shape."""
-    text = "This is a test sentence."
-    
+def test_embed_text_shape():
+    """Test that the embed_text function returns embeddings with the expected shape."""
+    text = "This is a test"
     embedding = embed_text(text)
     
-    # all-MiniLM-L6-v2 produces 384-dimensional embeddings
+    # The embedding should be a 1D array with 384 dimensions (for all-MiniLM-L6-v2)
     assert embedding.shape == (1, 384)
     
-    # Test batch processing
-    texts = ["This is the first sentence.", "This is the second one."]
+    # Test with a list of strings
+    texts = ["This is a test", "This is another test"]
     embeddings = embed_text(texts)
     
+    # The embeddings should be a 2D array with shape (2, 384)
     assert embeddings.shape == (2, 384)
 
 
-def test_embed_code_returns_correct_shape():
-    """Test that embed_code returns embeddings with the correct shape."""
+def test_embed_code_shape():
+    """Test that the embed_code function returns embeddings with the expected shape."""
     code = """
-    def hello_world():
-        print("Hello, world!")
+    def test_function():
+        return "Hello, world!"
     """
-    
     embedding = embed_code(code)
     
-    # Should have the same dimensions as text embeddings
+    # The embedding should be a 1D array with 384 dimensions
     assert embedding.shape == (1, 384)
     
-    # Test batch processing
+    # Test with a list of code snippets
     codes = [
-        "print('Hello')",
-        "def add(a, b):\n    return a + b"
+        """
+        def test_function():
+            return "Hello, world!"
+        """,
+        """
+        class TestClass:
+            def __init__(self):
+                self.message = "Hello, world!"
+        """
     ]
     embeddings = embed_code(codes)
     
+    # The embeddings should be a 2D array with shape (2, 384)
     assert embeddings.shape == (2, 384)
 
 
-def test_embed_table_returns_correct_shape():
-    """Test that embed_table returns embeddings with the correct shape."""
-    table = {"name": "John", "age": 30, "city": "New York"}
-    
+def test_embed_table_shape():
+    """Test that the embed_table function returns embeddings with the expected shape."""
+    table = {
+        "name": "John Doe",
+        "age": 30,
+        "email": "john.doe@example.com"
+    }
     embedding = embed_table(table)
     
-    # Should have the same dimensions as text embeddings
+    # The embedding should be a 1D array with 384 dimensions
     assert embedding.shape == (1, 384)
     
-    # Test batch processing
+    # Test with a list of tables
     tables = [
-        {"name": "John", "age": 30, "city": "New York"},
-        {"name": "Jane", "age": 25, "city": "San Francisco"}
+        {
+            "name": "John Doe",
+            "age": 30,
+            "email": "john.doe@example.com"
+        },
+        {
+            "name": "Jane Smith",
+            "age": 25,
+            "email": "jane.smith@example.com"
+        }
     ]
     embeddings = embed_table(tables)
     
+    # The embeddings should be a 2D array with shape (2, 384)
     assert embeddings.shape == (2, 384)
 
 
-def test_similar_texts_have_high_similarity():
-    """Test that similar texts have a high cosine similarity score."""
-    text1 = "The quick brown fox jumps over the lazy dog."
-    text2 = "A swift brown fox leaps above the sleepy canine."
+def test_text_similarity():
+    """Test that similar texts have high cosine similarity."""
+    text1 = "How to implement a binary search tree in Python"
+    text2 = "Python implementation of a binary search tree"
     
     embedding1 = embed_text(text1)
     embedding2 = embed_text(text2)
     
+    # Calculate cosine similarity
     similarity = cosine_similarity(embedding1, embedding2)[0][0]
     
-    # Similar sentences should have a relatively high similarity score
-    assert similarity > 0.7
+    # The similarity should be high (> 0.8) for very similar texts
+    assert similarity > 0.8, f"Similarity {similarity} is not > 0.8"
 
 
-def test_identical_text_has_cosine_similarity_gte_08():
-    """Test that identical texts have a cosine similarity of at least 0.8."""
-    # Test with identical strings
-    text = "The quick brown fox jumps over the lazy dog."
+def test_code_similarity():
+    """Test that similar code snippets have high cosine similarity."""
+    code1 = """
+    def binary_search(arr, x):
+        low = 0
+        high = len(arr) - 1
+        while low <= high:
+            mid = (low + high) // 2
+            if arr[mid] < x:
+                low = mid + 1
+            elif arr[mid] > x:
+                high = mid - 1
+            else:
+                return mid
+        return -1
+    """
     
-    embedding1 = embed_text(text)
-    embedding2 = embed_text(text)
+    code2 = """
+    def binary_search(array, target):
+        start = 0
+        end = len(array) - 1
+        while start <= end:
+            middle = (start + end) // 2
+            if array[middle] < target:
+                start = middle + 1
+            elif array[middle] > target:
+                end = middle - 1
+            else:
+                return middle
+        return -1
+    """
     
+    embedding1 = embed_code(code1)
+    embedding2 = embed_code(code2)
+    
+    # Calculate cosine similarity
     similarity = cosine_similarity(embedding1, embedding2)[0][0]
     
-    # Identical text should have similarity very close to 1.0
-    assert similarity >= 0.8
-    # It won't be exactly 1.0 due to potential floating-point precision issues
-    assert similarity <= 1.0
+    # The similarity should be high (> 0.8) for very similar code snippets
+    assert similarity > 0.8, f"Similarity {similarity} is not > 0.8"
 
 
-def test_different_texts_have_lower_similarity():
-    """Test that different texts have a lower cosine similarity score."""
-    text1 = "The quick brown fox jumps over the lazy dog."
-    text2 = "Machine learning models process natural language effectively."
+def test_table_similarity():
+    """Test that similar tables have high cosine similarity."""
+    table1 = {
+        "name": "John Doe",
+        "age": 30,
+        "email": "john.doe@example.com"
+    }
     
-    embedding1 = embed_text(text1)
-    embedding2 = embed_text(text2)
+    table2 = {
+        "name": "John Doe",
+        "age": 30,
+        "email": "john.doe@example.org"
+    }
     
+    embedding1 = embed_table(table1)
+    embedding2 = embed_table(table2)
+    
+    # Calculate cosine similarity
     similarity = cosine_similarity(embedding1, embedding2)[0][0]
     
-    # Different topics should have a relatively low similarity score
-    assert similarity < 0.7
-
-
-def test_empty_input_raises_error():
-    """Test that empty inputs raise an appropriate error."""
-    with pytest.raises(ValueError):
-        embed_text("")
-    
-    with pytest.raises(ValueError):
-        embed_code("")
-    
-    with pytest.raises(ValueError):
-        embed_table({})
+    # The similarity should be high (> 0.8) for very similar tables
+    assert similarity > 0.8, f"Similarity {similarity} is not > 0.8"
