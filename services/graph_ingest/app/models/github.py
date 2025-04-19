@@ -16,7 +16,7 @@ class GitHubUser(BaseEntity):
     followers_url: str
     following_url: str
     repos_url: str
-    type: str
+    account_type: str = "User"
     site_admin: bool = False
     is_organization: bool = False
     
@@ -38,7 +38,7 @@ class GitHubUser(BaseEntity):
             followers_url=data.get("followers_url", ""),
             following_url=data.get("following_url", ""),
             repos_url=data.get("repos_url", ""),
-            type=data.get("type", "User"),
+            account_type=data.get("type", "User"),
             site_admin=data.get("site_admin", False),
             is_organization=is_org,
             properties={
