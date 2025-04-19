@@ -1,68 +1,52 @@
 ---
-# This file defines tasks that will be scheduled by the scheduler service
-# It follows the crontab format: minute hour day_of_month month day_of_week
-# Each task should have:
-#   - name: A unique name for the task
-#   - description: A description of what the task does
-#   - cron: A cron expression for when to run the task
-#   - task: The Celery task to execute (format: module.task_name)
-#   - args: List of positional arguments to pass to the task
-#   - kwargs: Dictionary of keyword arguments to pass to the task
-#   - enabled: Whether the task is enabled (true/false)
-
 tasks:
-  - name: "ingest_openai_github"
-    description: "Ingest OpenAI GitHub organization data"
+  # GitHub data ingestion tasks
+  github_openai_ingest:
+    name: Ingest OpenAI GitHub Data
+    description: Fetches organization and repository data from OpenAI's GitHub account
+    cron: "0 */12 * * *"  # Every 12 hours
+    task: tasks.ingest_github
+    args: ["openai"]
+    enabled: true
+
+  github_vercel_ingest:
+    name: Ingest Vercel GitHub Data
+    description: Fetches organization and repository data from Vercel's GitHub account
+    cron: "0 */12 * * *"  # Every 12 hours
+    task: tasks.ingest_github
+    args: ["vercel"]
+    enabled: true
+
+  github_nextjs_ingest:
+    name: Ingest Next.js GitHub Data
+    description: Fetches repository data for the Next.js project
     cron: "0 */6 * * *"  # Every 6 hours
-    task: "tasks.ingest_github"
-    args: ["openai"]
-    kwargs: {}
+    task: tasks.ingest_github
+    args: ["vercel/next.js"]
     enabled: true
 
-  - name: "ingest_replicate_github"
-    description: "Ingest Replicate GitHub organization data"
-    cron: "30 */6 * * *"  # Every 6 hours, 30 minutes past
-    task: "tasks.ingest_github"
-    args: ["replicate"]
-    kwargs: {}
+  # Crunchbase data ingestion tasks
+  crunchbase_openai_ingest:
+    name: Ingest OpenAI Crunchbase Data
+    description: Fetches company data for OpenAI from Crunchbase
+    cron: "0 0 * * *"  # Once a day at midnight
+    task: tasks.ingest_crunchbase
+    args: ["openai"]
     enabled: true
 
-  - name: "ingest_anthropic_github"
-    description: "Ingest Anthropic GitHub organization data"
-    cron: "0 */8 * * *"  # Every 8 hours
-    task: "tasks.ingest_github"
-    args: ["anthropic"]
-    kwargs: {}
+  crunchbase_vercel_ingest:
+    name: Ingest Vercel Crunchbase Data
+    description: Fetches company data for Vercel from Crunchbase
+    cron: "0 0 * * *"  # Once a day at midnight
+    task: tasks.ingest_crunchbase
+    args: ["vercel"]
     enabled: true
-    
-  - name: "ingest_openai_crunchbase"
-    description: "Ingest OpenAI Crunchbase data"
-    cron: "0 2 * * *"  # Every day at 2am
-    task: "tasks.ingest_crunchbase"
-    args: ["openai"]
-    kwargs: {}
-    enabled: true
-    
-  - name: "ingest_anthropic_crunchbase"
-    description: "Ingest Anthropic Crunchbase data"
-    cron: "0 3 * * *"  # Every day at 3am
-    task: "tasks.ingest_crunchbase"
-    args: ["anthropic"]
-    kwargs: {}
-    enabled: true
-    
-  - name: "ingest_replicate_crunchbase"
-    description: "Ingest Replicate Crunchbase data"
-    cron: "0 4 * * *"  # Every day at 4am
-    task: "tasks.ingest_crunchbase"
-    args: ["replicate"]
-    kwargs: {}
-    enabled: true
-    
-  - name: "cleanup_old_data"
-    description: "Clean up data older than 90 days"
-    cron: "0 1 * * 0"  # Every Sunday at 1am
-    task: "tasks.cleanup_old_data"
-    args: [90]
-    kwargs: {}
+
+  # Data cleanup task
+  cleanup_old_data:
+    name: Clean Up Old Data
+    description: Removes data older than 30 days from the database
+    cron: "0 1 * * 0"  # At 1 AM on Sundays
+    task: tasks.cleanup_old_data
+    args: [30]  # Keep 30 days of data
     enabled: true
