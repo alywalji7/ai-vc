@@ -1,7 +1,8 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Boolean, JSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
+from sqlalchemy.dialects.postgresql import JSONB
 
 Base = declarative_base()
 
@@ -37,3 +38,16 @@ class Item(Base):
     
     def __repr__(self):
         return f"<Item {self.title}>"
+
+
+class DueDiligenceResult(Base):
+    __tablename__ = "due_diligence_results"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    company_id = Column(String(50), index=True, nullable=False)
+    module_name = Column(String(100), nullable=False)
+    verdict = Column(JSONB, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    
+    def __repr__(self):
+        return f"<DueDiligenceResult {self.company_id}/{self.module_name}>"
