@@ -1,0 +1,14 @@
+{
+  "id": "c003",
+  "name": "CloudNative",
+  "website": "https://cloudnative.example.com",
+  "founding_date": "2019-06-12",
+  "github_stars": 3450,
+  "commit_velocity": 12.7,
+  "investor_count": 3,
+  "founder_exit_count": 0,
+  "social_traction": 1567,
+  "funding_amount": 1500000,
+  "radar_score": 0.92,
+  "generation_timestamp": "2025-04-19T19:15:00.000Z"
+}
