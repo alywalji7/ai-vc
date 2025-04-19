@@ -12,8 +12,13 @@ from pydantic import BaseModel
 
 router = APIRouter(prefix="/dataroom", tags=["dataroom"])
 
-# Path to data rooms directory
-DATAROOMS_DIR = os.path.join("data", "datarooms")
+# Path to data rooms directory - must be from the project root, not the backend service directory
+# Go up four levels from this file: app/api -> app -> services/backend -> services -> root
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))))
+DATAROOMS_DIR = os.path.join(PROJECT_ROOT, "data", "datarooms")
+
+# Debug: Print the absolute path
+print(f"DATAROOMS_DIR absolute path: {os.path.abspath(DATAROOMS_DIR)}")
 
 
 class DataRoom(BaseModel):
@@ -41,30 +46,48 @@ async def list_datarooms() -> Dict[str, Any]:
     
     # Check if the directory exists
     if not os.path.exists(DATAROOMS_DIR):
+        print(f"Directory {DATAROOMS_DIR} does not exist")
         return {"datarooms": []}
     
-    # List all subdirectories (company IDs)
-    for company_id in os.listdir(DATAROOMS_DIR):
-        company_dir = os.path.join(DATAROOMS_DIR, company_id)
-        
-        if os.path.isdir(company_dir):
-            # Look for company_data.json
-            data_file = os.path.join(company_dir, "company_data.json")
-            
-            if os.path.exists(data_file):
-                try:
-                    with open(data_file, "r") as f:
-                        company_data = json.load(f)
-                        
-                    datarooms.append({
-                        "id": company_data.get("id", company_id),
-                        "name": company_data.get("name", f"Company {company_id}"),
-                        "radar_score": company_data.get("radar_score", 0.0),
-                        "generation_timestamp": company_data.get("generation_timestamp", "")
-                    })
-                except Exception as e:
-                    print(f"Error reading data for {company_id}: {e}")
+    print(f"Directory {DATAROOMS_DIR} exists, listing content:")
     
+    # List all subdirectories (company IDs)
+    try:
+        all_items = os.listdir(DATAROOMS_DIR)
+        print(f"Items in {DATAROOMS_DIR}: {all_items}")
+        
+        for company_id in all_items:
+            company_dir = os.path.join(DATAROOMS_DIR, company_id)
+            print(f"Checking {company_dir}")
+            
+            if os.path.isdir(company_dir):
+                print(f"{company_dir} is a directory")
+                # Look for company_data.json
+                data_file = os.path.join(company_dir, "company_data.json")
+                
+                if os.path.exists(data_file):
+                    print(f"Found data file at {data_file}")
+                    try:
+                        with open(data_file, "r") as f:
+                            company_data = json.load(f)
+                            
+                        datarooms.append({
+                            "id": company_data.get("id", company_id),
+                            "name": company_data.get("name", f"Company {company_id}"),
+                            "radar_score": company_data.get("radar_score", 0.0),
+                            "generation_timestamp": company_data.get("generation_timestamp", "")
+                        })
+                        print(f"Added dataroom for {company_id}")
+                    except Exception as e:
+                        print(f"Error reading data for {company_id}: {e}")
+                else:
+                    print(f"No data file found at {data_file}")
+            else:
+                print(f"{company_dir} is not a directory")
+    except Exception as e:
+        print(f"Error listing directory {DATAROOMS_DIR}: {e}")
+    
+    print(f"Returning {len(datarooms)} datarooms")
     return {"datarooms": datarooms}
 
 
