@@ -17,7 +17,8 @@ export default function HomePage() {
   useEffect(() => {
     async function fetchUsers() {
       try {
-        const response = await fetch('http://localhost:8000/api/users/')
+        // Use a proxy approach through Next.js API routes to avoid CORS issues
+        const response = await fetch('/api/users')
         if (!response.ok) {
           throw new Error('Failed to fetch users')
         }
