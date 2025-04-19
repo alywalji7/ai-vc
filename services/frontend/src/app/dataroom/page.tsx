@@ -26,6 +26,7 @@ export default function DataRoomPage() {
         }
         
         const data = await response.json();
+        console.log('Frontend component received data:', data);
         setDataRooms(data.datarooms || []);
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Unknown error occurred');

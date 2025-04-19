@@ -22,6 +22,7 @@ export async function GET(request: NextRequest) {
     
     // Return the data
     const data = await response.json();
+    console.log('Frontend API received from backend:', data);
     return NextResponse.json(data);
   } catch (error) {
     console.error('Error in dataroom API route:', error);
