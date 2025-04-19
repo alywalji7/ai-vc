@@ -3,32 +3,24 @@ import { NextRequest, NextResponse } from 'next/server';
 const BACKEND_URL = process.env.BACKEND_URL || 'http://localhost:8000';
 
 /**
- * GET handler for listing all datarooms
+ * GET handler for retrieving a list of all data rooms
  */
 export async function GET(request: NextRequest) {
   try {
-    const url = new URL(request.url);
-    const companyId = url.pathname.split('/api/dataroom/')[1];
+    // Build the API URL
+    const apiUrl = `${BACKEND_URL}/api/dataroom`;
     
-    let apiUrl: string;
-    
-    if (companyId) {
-      // If we have a company ID, get that specific data room
-      apiUrl = `${BACKEND_URL}/api/dataroom/${companyId}`;
-    } else {
-      // Otherwise, list all data rooms
-      apiUrl = `${BACKEND_URL}/api/dataroom`;
-    }
-    
+    // Fetch data from the backend
     const response = await fetch(apiUrl);
     
     if (!response.ok) {
       return NextResponse.json(
-        { error: `Error fetching dataroom: ${response.statusText}` },
+        { error: `Error fetching datarooms: ${response.statusText}` },
         { status: response.status }
       );
     }
     
+    // Return the data
     const data = await response.json();
     return NextResponse.json(data);
   } catch (error) {
