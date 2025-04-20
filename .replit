@@ -1,8 +1,8 @@
-modules = ["nodejs-20", "python-3.11", "postgresql-16"]
+modules = ["nodejs-20", "python-3.11", "postgresql-16", "python3"]
 
 [nix]
 channel = "stable-24_05"
-packages = ["libxcrypt", "libyaml", "wget"]
+packages = ["libxcrypt", "libyaml", "rdkafka", "wget", "zlib"]
 
 [workflows]
 runButton = "Project"
