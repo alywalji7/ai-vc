@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 def check_ofac_sanctions(
     name: str, 
-    country: str = None, 
+    country: Optional[str] = None, 
     additional_data: Optional[Dict[str, Any]] = None
 ) -> Tuple[bool, Dict[str, Any]]:
     """

@@ -7,6 +7,9 @@ from sqlalchemy.dialects.postgresql import JSONB
 # Use the base from the db module
 from app.db import Base
 
+# For now we'll import these models directly in any file that needs them
+# from libs.compliance.models import AuditLog, AdminOverride
+
 class User(Base):
     __tablename__ = "users"
 
