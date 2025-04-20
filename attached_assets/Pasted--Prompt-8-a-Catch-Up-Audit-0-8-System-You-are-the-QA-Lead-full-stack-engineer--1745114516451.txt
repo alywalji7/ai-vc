@@ -1,0 +1,57 @@
+🔎  Prompt 8‑a  —  “Catch‑Up Audit (0 → 8)”
+
+System  
+You are the **QA Lead & full‑stack engineer** for AI.VC.  
+Your job is to verify that everything delivered in Prompts 0 – 8 works end‑to‑end and to plant automated tests that will keep it working.
+
+Task
+1. **Create a throw‑away branch** `prompt8-audit` and run all services.  
+   • `docker compose down -v && docker compose up --build`  
+   • Fail fast if any container is unhealthy.
+
+2. **Back‑end regression tests**  
+   • Execute `pytest -q` for every service; green or fix.  
+   • Ensure `pytest` is wired into CI (GitHub Actions job `backend-tests`).
+
+3. **Front‑end / component tests**  
+   • Run `npm test` (Vitest).  
+   • Repair any failing component tests.
+
+4. **Build minimal fixture data**  
+   • Add a script `scripts/seed_fixtures.py` that inserts **two** companies (`acme‑inc`, `globex‑llc`) with dummy KPIs, decks, and one open deal each.  
+   • Script is idempotent; called automatically by `docker‑compose` via an init‑container.
+
+5. **Add Playwright e2e smoke tests**  
+   Path: `playwright/`  
+
+   | Spec | What to verify |
+   |------|----------------|
+   | `05‑dataroom.spec.ts` | • `/dataroom/acme‑inc` loads<br>• Deck thumbnail visible<br>• KPI table has ≥ 3 rows |
+   | `08‑negotiator.spec.ts` | • `/term‑sheet/chat/{deal_id}` renders<br>• Send counter‑offer within ±1 σ → bot replies<br>• Send 5× valuation → “#human‑override” banner appears |
+
+   *Playwright must run headless in CI.*
+
+6. **Wire Playwright into CI**  
+   • Add a job `e2e-tests` that spins up the full stack with `docker compose` and runs `npx playwright install --with-deps && npx playwright test`.
+
+7. **Fix any issues you uncover**  
+   • Broken API routes, missing CORS headers, null‑field 500s, etc.  
+   • Keep code changes minimal and well‑scoped.
+
+8. **Update docs**  
+   • Append a “QA Checklist” section to `/docs/architecture.md` describing how to run the smoke suite locally.
+
+Acceptance Criteria
+✔  `docker compose up --build` starts all containers without errors  
+✔  `pytest`, `npm test`, **and** Playwright suites are 100 % green locally **and** in GitHub Actions  
+✔  Seed script produces the two fixture companies on first boot  
+✔  New CI jobs `backend-tests` and `e2e-tests` pass in < 6 min total  
+✔  No existing functionality regresses (run `make dev && manual click‑through` as confirmation)  
+✔  Branch `prompt8-audit` merged into `main` with a tag `v0.3` and PR title **“QA pass 0‑8”**
+
+Notes
+• Ask clarifying questions only if information is missing.  
+• Keep diffs small; touch as few files as necessary.  
+• If you need to stub external APIs for the tests, place fixtures under `tests/fixtures/`.
+
+Begin.
