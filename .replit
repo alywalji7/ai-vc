@@ -40,6 +40,10 @@ args = "Radar Service"
 task = "workflow.run"
 args = "IC Simulator Service"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Term Sheet Service"
+
 [[workflows.workflow]]
 name = "Frontend Service"
 author = "agent"
@@ -145,6 +149,21 @@ task = "shell.exec"
 args = "cd services/ic_sim && pip install -r requirements.txt && PYTHONPATH=$PYTHONPATH:. python main.py"
 waitForPort = 8060
 
+[[workflows.workflow]]
+name = "Term Sheet Service"
+author = "agent"
+
+[workflows.workflow.metadata]
+agentRequireRestartOnSave = false
+
+[[workflows.workflow.tasks]]
+task = "packager.installForAll"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd services/term_sheet && pip install -r requirements.txt && python main.py"
+waitForPort = 8070
+
 [deployment]
 run = ["sh", "-c", "cd services/frontend && npm install && npm run dev -- -p 5000"]
 
@@ -163,6 +182,10 @@ externalPort = 8000
 [[ports]]
 localPort = 8060
 externalPort = 5000
+
+[[ports]]
+localPort = 8070
+externalPort = 5173
 
 [[ports]]
 localPort = 8080
