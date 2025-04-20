@@ -119,11 +119,14 @@ async def perform_tot_analysis(company: CompanyData) -> ICResult:
             for step in reasoning_chain
         ])
         
+        # Make sure decision is lowercase to match our enum values
+        decision = analysis["decision"].lower()
+        
         # Create and return the result
         return ICResult(
             company_id=company.id,
             company_name=company.name,
-            decision=analysis["decision"],
+            decision=decision,
             confidence=analysis["confidence"],
             roi_expectation=analysis["roi_expectation"],
             risk_assessment=analysis["risk_assessment"],

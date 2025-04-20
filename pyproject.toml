@@ -29,6 +29,11 @@ numpy = "^2.2.4"
 markdown = "^3.8"
 openai = "^1.75.0"
 minio = "^7.2.15"
+requests = "^2.32.3"
+slack-sdk = "^3.35.0"
+docxtpl = "^0.19.1"
+python-docx = "^1.1.2"
+websockets = "^15.0.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"
