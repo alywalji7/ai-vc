@@ -1,49 +1,40 @@
 """
-Configuration settings for value-add agents.
+Configuration for Value-Add Agents.
 """
-
 import os
-from typing import Dict, Any
+from pathlib import Path
 
-# Kafka configuration
-KAFKA_BOOTSTRAP_SERVERS = os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
-KAFKA_GROUP_ID_PREFIX = "value_add_agents"
+# Define the path to growth plans
+GROWTH_PLANS_DIR = os.environ.get('GROWTH_PLANS_DIR', str(Path(__file__).parent.parent.parent / 'growth_plans'))
 
-# Topics
-TOPIC_NEW_HIRE_REQ = "new_hire_req"
-TOPIC_GROWTH_GOAL = "growth_goal"
-TOPIC_INTRO_REQ = "intro_req"
+# Kafka connection settings
+KAFKA_BOOTSTRAP_SERVERS = os.environ.get('KAFKA_BOOTSTRAP_SERVERS', 'localhost:9092')
 
-# Output directories
-GROWTH_PLANS_DIR = os.path.abspath("./growth_plans")
-os.makedirs(GROWTH_PLANS_DIR, exist_ok=True)
-
-# Email configuration (stub)
-EMAIL_FROM = "ai.vc@example.com"
-EMAIL_SIGNATURE = """
---
-AI.VC Operating Partners Team
-Helping portfolio companies grow faster
-"""
-
-# Agent-specific configuration
-AGENT_CONFIG: Dict[str, Dict[str, Any]] = {
+# Agent configuration
+AGENT_CONFIG = {
     "recruit_bot": {
-        "topic": TOPIC_NEW_HIRE_REQ,
-        "group_id": f"{KAFKA_GROUP_ID_PREFIX}.recruit_bot",
+        "topic": "new_hire_req",
+        "group_id": "recruit_bot_group",
         "name": "RecruitBot",
-        "description": "AI-powered recruiting assistant for portfolio companies",
+        "description": "AI-powered recruiting assistant for portfolio companies"
     },
     "growth_bot": {
-        "topic": TOPIC_GROWTH_GOAL,
-        "group_id": f"{KAFKA_GROUP_ID_PREFIX}.growth_bot",
+        "topic": "growth_goal",
+        "group_id": "growth_bot_group",
         "name": "GrowthBot",
-        "description": "AI-powered growth strategist for portfolio companies",
+        "description": "AI-powered growth strategist for portfolio companies"
     },
     "intro_bot": {
-        "topic": TOPIC_INTRO_REQ,
-        "group_id": f"{KAFKA_GROUP_ID_PREFIX}.intro_bot",
+        "topic": "intro_req",
+        "group_id": "intro_bot_group",
         "name": "IntroBot",
-        "description": "AI-powered networking assistant for portfolio companies",
-    },
+        "description": "AI-powered networking assistant for portfolio companies"
+    }
+}
+
+# Email configuration
+EMAIL_CONFIG = {
+    "default_from": "ai-agents@ai.vc",
+    "reply_to": "support@ai.vc",
+    "subject_prefix": "[AI.VC] "
 }

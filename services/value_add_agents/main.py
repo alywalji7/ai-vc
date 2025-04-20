@@ -10,16 +10,12 @@ This script starts all three agents:
 Each agent subscribes to its respective Kafka topic and processes messages asynchronously.
 """
 
-import asyncio
-import logging
-import argparse
+import os
 import sys
-from typing import List, Optional
-
-from config import AGENT_CONFIG
-from recruit_bot.agent import RecruitBot
-from growth_bot.agent import GrowthBot
-from intro_bot.agent import IntroBot
+import logging
+import asyncio
+import argparse
+from typing import List
 
 # Configure logging
 logging.basicConfig(
@@ -27,6 +23,12 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger("value_add_agents")
+
+# Import agents
+from recruit_bot.agent import RecruitBot
+from growth_bot.agent import GrowthBot
+from intro_bot.agent import IntroBot
+from config import AGENT_CONFIG
 
 
 async def run_agents(agents: List[str]):
@@ -38,52 +40,44 @@ async def run_agents(agents: List[str]):
     """
     tasks = []
     
-    for agent_name in agents:
-        if agent_name not in AGENT_CONFIG:
-            logger.warning(f"Unknown agent: {agent_name}")
-            continue
-        
-        config = AGENT_CONFIG[agent_name]
-        logger.info(f"Starting agent: {config['name']}")
-        
-        if agent_name == "recruit_bot":
-            task = asyncio.create_task(
-                RecruitBot.run(
-                    topic=config["topic"],
-                    group_id=config["group_id"],
-                    name=config["name"],
-                    description=config["description"]
-                )
-            )
-        elif agent_name == "growth_bot":
-            task = asyncio.create_task(
-                GrowthBot.run(
-                    topic=config["topic"],
-                    group_id=config["group_id"],
-                    name=config["name"],
-                    description=config["description"]
-                )
-            )
-        elif agent_name == "intro_bot":
-            task = asyncio.create_task(
-                IntroBot.run(
-                    topic=config["topic"],
-                    group_id=config["group_id"],
-                    name=config["name"],
-                    description=config["description"]
-                )
-            )
-        else:
-            continue
-        
-        tasks.append(task)
+    if "recruit_bot" in agents:
+        config = AGENT_CONFIG["recruit_bot"]
+        recruit_bot = RecruitBot(
+            topic=config["topic"],
+            group_id=config["group_id"],
+            name=config["name"],
+            description=config["description"]
+        )
+        tasks.append(recruit_bot.start())
+        logger.info(f"Started {config['name']}")
     
-    if not tasks:
-        logger.error("No valid agents specified")
-        return
+    if "growth_bot" in agents:
+        config = AGENT_CONFIG["growth_bot"]
+        growth_bot = GrowthBot(
+            topic=config["topic"],
+            group_id=config["group_id"],
+            name=config["name"],
+            description=config["description"]
+        )
+        tasks.append(growth_bot.start())
+        logger.info(f"Started {config['name']}")
     
-    # Wait for all agents to complete (they should run indefinitely)
-    await asyncio.gather(*tasks)
+    if "intro_bot" in agents:
+        config = AGENT_CONFIG["intro_bot"]
+        intro_bot = IntroBot(
+            topic=config["topic"],
+            group_id=config["group_id"],
+            name=config["name"],
+            description=config["description"]
+        )
+        tasks.append(intro_bot.start())
+        logger.info(f"Started {config['name']}")
+    
+    # Wait for all agents to complete
+    if tasks:
+        await asyncio.gather(*tasks)
+    else:
+        logger.warning("No agents were started")
 
 
 def main():
@@ -102,15 +96,18 @@ def main():
     
     # If "all" is specified, run all agents
     if "all" in agents_to_run:
-        agents_to_run = list(AGENT_CONFIG.keys())
+        agents_to_run = ["recruit_bot", "growth_bot", "intro_bot"]
     
     logger.info(f"Starting Value Add Agents: {', '.join(agents_to_run)}")
     
     try:
         asyncio.run(run_agents(agents_to_run))
     except KeyboardInterrupt:
-        logger.info("Shutting down agents...")
-        sys.exit(0)
+        logger.info("Stopping agents due to keyboard interrupt")
+    except Exception as e:
+        logger.error(f"Error running agents: {str(e)}")
+    
+    logger.info("Value Add Agents system shutdown")
 
 
 if __name__ == "__main__":
