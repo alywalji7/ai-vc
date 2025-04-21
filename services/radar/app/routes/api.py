@@ -115,7 +115,12 @@ async def get_shortlist(
 
 
 @router.get("/radar/shortlist_with_metadata", response_model=Shortlist)
+@rate_limit(
+    requests_per_minute=DEFAULT_REQUESTS_PER_MINUTE,
+    token_quota=DEFAULT_TOKEN_QUOTA
+)
 async def get_shortlist_with_metadata(
+    request: Request,
     limit: int = Query(10, ge=1, le=50, description="Maximum number of companies to return"),
     db: Session = Depends(get_db),
 ):
@@ -130,7 +135,8 @@ async def get_shortlist_with_metadata(
         Shortlist object with items and metadata
     """
     try:
-        shortlist_items = await get_shortlist(limit=limit, db=db)
+        # Need to pass the request to the get_shortlist function
+        shortlist_items = await get_shortlist(request=request, limit=limit, db=db)
         
         return Shortlist(
             items=shortlist_items,
@@ -144,7 +150,10 @@ async def get_shortlist_with_metadata(
 
 
 @router.get("/radar/model_metadata", response_model=ModelMetadata)
-async def get_model_metadata():
+@rate_limit(
+    requests_per_minute=DEFAULT_REQUESTS_PER_MINUTE * 2  # Allow more requests for metadata
+)
+async def get_model_metadata(request: Request):
     """
     Get metadata about the model used for predictions.
     

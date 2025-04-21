@@ -43,6 +43,7 @@ pandas = "^2.2.3"
 scikit-learn = "^1.6.1"
 catboost = "^1.2.8"
 schedule = "^1.2.2"
+aiohttp = "^3.11.18"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"

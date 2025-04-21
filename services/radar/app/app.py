@@ -3,10 +3,24 @@ FastAPI application for the Deal-Flow Radar service.
 """
 import logging
 import os
+import sys
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import threading
+
+# Add parent directory to path
+sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "libs"))
+
+# Import cost guardrails components
+try:
+    from cost_guardrails.rate_limiter import create_cost_guardrail_middleware
+    from cost_guardrails.monitoring_api import router as metrics_router
+    COST_GUARDRAILS_ENABLED = True
+except ImportError:
+    # Fallback if imports fail
+    logging.warning("Cost guardrails module not found. Cost monitoring disabled.")
+    COST_GUARDRAILS_ENABLED = False
 
 from .database import create_tables
 from .routes.api import router as api_router
@@ -52,20 +66,46 @@ def create_app() -> FastAPI:
     # Register routes
     app.include_router(api_router)
     
+    # Register metrics API if available
+    if COST_GUARDRAILS_ENABLED:
+        app.include_router(metrics_router)
+        # Add cost guardrail middleware
+        app.add_middleware(create_cost_guardrail_middleware())
+        logger.info("Cost guardrails middleware and monitoring API registered")
+    
     # Create default route
     @app.get("/", tags=["Status"])
     async def root():
         """
         Root endpoint - return basic service info.
         """
+        endpoints = {
+            "daily_shortlist": "/radar/daily_shortlist",
+            "model_metadata": "/radar/model_metadata",
+        }
+        
+        # Add monitoring endpoints if available
+        if COST_GUARDRAILS_ENABLED:
+            endpoints.update({
+                "metrics_status": "/metrics/status",
+                "token_usage": "/metrics/token-usage",
+                "request_counts": "/metrics/request-counts",
+                "openai_usage": "/metrics/openai-usage",
+            })
+            
+            # Add GPU metrics if enabled
+            if os.environ.get("GPU_ENABLED", "false").lower() == "true":
+                endpoints.update({
+                    "gpu_usage": "/metrics/gpu-usage",
+                    "current_gpu": "/metrics/current-gpu",
+                })
+        
         return {
             "service": "Deal-Flow Radar",
             "version": "0.1.0",
             "status": "operational",
-            "endpoints": {
-                "daily_shortlist": "/radar/daily_shortlist",
-                "model_metadata": "/radar/model_metadata",
-            }
+            "endpoints": endpoints,
+            "cost_guardrails_enabled": COST_GUARDRAILS_ENABLED
         }
     
     @app.get("/health", tags=["Status"])
