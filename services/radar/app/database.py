@@ -133,6 +133,47 @@ class InvestmentOpportunity(Base):
         return f"<InvestmentOpportunity(id={self.id}, company_id='{self.company_id}', score={self.score})>"
 
 
+class CompanyOutcome(Base):
+    """
+    Tracks the actual outcome of companies for model training and evaluation.
+    """
+    __tablename__ = "company_outcomes"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    company_id = Column(String, ForeignKey("companies.id"), nullable=False)
+    exit_event = Column(Boolean, default=False)  # True if company had an exit
+    exit_date = Column(DateTime, nullable=True)  # Date of exit (if any)
+    exit_amount = Column(Float, nullable=True)  # Amount of exit (if any)
+    
+    up_round = Column(Boolean, default=False)  # True if company had an up-round
+    up_round_date = Column(DateTime, nullable=True)  # Date of up-round (if any)
+    up_round_valuation = Column(Float, nullable=True)  # Valuation of up-round (if any)
+    previous_valuation = Column(Float, nullable=True)  # Previous valuation
+    
+    last_updated = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    def __repr__(self):
+        return f"<CompanyOutcome(id={self.id}, company_id='{self.company_id}', exit={self.exit_event}, up_round={self.up_round})>"
+
+
+class ModelVersion(Base):
+    """
+    Model version tracking for MLflow integration.
+    """
+    __tablename__ = "model_versions"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    mlflow_run_id = Column(String, nullable=True)
+    model_version = Column(String, nullable=False)
+    training_date = Column(DateTime, default=datetime.utcnow)
+    auc_score = Column(Float, nullable=False)
+    in_production = Column(Boolean, default=False)
+    metrics = Column(String, nullable=True)  # JSON string of various metrics
+    
+    def __repr__(self):
+        return f"<ModelVersion(id={self.id}, model_version='{self.model_version}', auc={self.auc_score}, in_production={self.in_production})>"
+
+
 # Create all tables in the database
 def create_tables():
     """
