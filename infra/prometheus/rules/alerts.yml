@@ -1,29 +1,62 @@
 groups:
-  - name: services
+  - name: aivc_alerts
     rules:
-      - alert: HighLatency
-        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le, job, instance)) > 1
-        for: 2m
+      # High Latency Alert - p95 latency exceeds 500ms
+      - alert: HighRequestLatency
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (endpoint, le)) > 0.5
+        for: 1m
         labels:
           severity: warning
         annotations:
-          summary: "High latency on {{ $labels.job }}/{{ $labels.instance }}"
-          description: "P95 latency is above 1 second for {{ $labels.job }} on {{ $labels.instance }} for the past 2 minutes."
-          
+          summary: "High request latency detected"
+          description: "The 95th percentile latency for {{ $labels.endpoint }} is above 500ms: {{ $value }}s"
+
+      # Error Rate Alert - error rate exceeds 1%
       - alert: HighErrorRate
-        expr: rate(http_requests_total{status=~"5.."}[5m]) / rate(http_requests_total[5m]) > 0.01
-        for: 2m
+        expr: sum(rate(http_requests_total{status=~"5.."}[5m])) by (endpoint) / sum(rate(http_requests_total[5m])) by (endpoint) > 0.01
+        for: 1m
         labels:
           severity: warning
         annotations:
-          summary: "High error rate on {{ $labels.job }}/{{ $labels.instance }}"
-          description: "Error rate is above 1% for {{ $labels.job }} on {{ $labels.instance }} for the past 2 minutes."
-          
+          summary: "High error rate detected"
+          description: "Error rate for {{ $labels.endpoint }} is above 1%: {{ $value | humanizePercentage }}"
+
+      # Service Down Alert
       - alert: ServiceDown
         expr: up == 0
         for: 1m
         labels:
           severity: critical
         annotations:
-          summary: "Service down: {{ $labels.job }}/{{ $labels.instance }}"
-          description: "{{ $labels.job }} on {{ $labels.instance }} has been down for more than 1 minute."
+          summary: "Service is down"
+          description: "{{ $labels.instance }} has been down for more than 1 minute."
+
+      # OpenAI API Token Usage Alert
+      - alert: HighTokenUsage
+        expr: sum(rate(openai_token_usage_total[1h])) > 1000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High OpenAI API token usage"
+          description: "Token usage rate is above 1000 tokens per hour: {{ $value }} tokens"
+
+      # Low GPU Memory Alert (for ML services)
+      - alert: LowGPUMemory
+        expr: nvidia_gpu_memory_used_bytes / nvidia_gpu_memory_total_bytes > 0.9
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Low GPU memory"
+          description: "GPU {{ $labels.gpu }} on {{ $labels.instance }} is using more than 90% of memory: {{ $value | humanizePercentage }}"
+
+      # Database Connection Alert
+      - alert: DatabaseConnectionErrors
+        expr: rate(database_connection_errors_total[5m]) > 0
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Database connection errors detected"
+          description: "Database connection errors detected on {{ $labels.instance }}: {{ $value }} errors per second"
