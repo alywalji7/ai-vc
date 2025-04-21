@@ -9,17 +9,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
 import threading
 
-# Add parent directory to path
-sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "libs"))
-
 # Import cost guardrails components
 try:
-    from cost_guardrails.rate_limiter import create_cost_guardrail_middleware
-    from cost_guardrails.monitoring_api import router as metrics_router
+    from .cost_guardrails.rate_limiter import create_cost_guardrail_middleware
+    from .cost_guardrails.monitoring_api import router as metrics_router
     COST_GUARDRAILS_ENABLED = True
-except ImportError:
+    logging.info("Cost guardrails module loaded successfully.")
+except ImportError as e:
     # Fallback if imports fail
-    logging.warning("Cost guardrails module not found. Cost monitoring disabled.")
+    logging.warning(f"Cost guardrails module not found. Cost monitoring disabled. Error: {str(e)}")
     COST_GUARDRAILS_ENABLED = False
 
 from .database import create_tables
