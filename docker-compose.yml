@@ -178,6 +178,36 @@ services:
       - ./growth_plans:/app/growth_plans
     restart: unless-stopped
 
+# Jaeger for distributed tracing
+  jaeger:
+    image: jaegertracing/all-in-one:latest
+    ports:
+      - "6831:6831/udp"  # Jaeger Thrift over UDP
+      - "6832:6832/udp"  # Jaeger Thrift over UDP (compact)
+      - "5778:5778"      # Jaeger configs
+      - "16686:16686"    # Jaeger UI
+      - "14268:14268"    # Jaeger HTTP Thrift
+      - "14250:14250"    # Jaeger gRPC
+      - "9411:9411"      # Zipkin compatible endpoint
+    environment:
+      - COLLECTOR_ZIPKIN_HOST_PORT=9411
+    restart: unless-stopped
+
+  # Alertmanager for alert handling
+  alertmanager:
+    image: prom/alertmanager:latest
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./infra/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml
+      - alertmanager-data:/alertmanager
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.yml'
+      - '--storage.path=/alertmanager'
+    restart: unless-stopped
+    depends_on:
+      - prometheus
+
 volumes:
   postgres-data:
   redis-data:
@@ -186,3 +216,4 @@ volumes:
   prometheus-data:
   grafana-data:
   kafka-data:
+  alertmanager-data:

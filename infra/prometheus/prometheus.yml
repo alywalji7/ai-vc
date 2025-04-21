@@ -1,26 +1,69 @@
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
+  scrape_timeout: 10s
 
+# Alertmanager configuration
 alerting:
   alertmanagers:
     - static_configs:
         - targets:
-          # - alertmanager:9093
+            - 'alertmanager:9093'
 
+# Rules and recording rules are stored in separate files
 rule_files:
-  # - "first_rules.yml"
-  # - "second_rules.yml"
+  - "/etc/prometheus/rules/*.yml"
 
+# A scrape configuration for each service
 scrape_configs:
-  - job_name: "prometheus"
+  - job_name: 'prometheus'
     static_configs:
-      - targets: ["localhost:9090"]
-  
-  - job_name: "scheduler"
+      - targets: ['localhost:9090']
+
+  - job_name: 'backend'
+    scrape_interval: 10s
+    metrics_path: '/metrics'
     static_configs:
-      - targets: ["scheduler:9090"]  # Scheduler Prometheus metrics
-  
-  - job_name: "celery"
+      - targets: ['backend:8000']
+
+  - job_name: 'radar'
+    scrape_interval: 10s
+    metrics_path: '/metrics'
     static_configs:
-      - targets: ["scheduler:9090"]  # Celery metrics via the scheduler service
+      - targets: ['radar:8095']
+
+  - job_name: 'graph_ingest'
+    scrape_interval: 10s
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['graph_ingest:8080']
+
+  - job_name: 'scheduler'
+    scrape_interval: 10s
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['scheduler:8000']
+
+  - job_name: 'similarity_api'
+    scrape_interval: 10s
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['similarity_api:8090']
+
+  - job_name: 'term_sheet'
+    scrape_interval: 10s
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['term_sheet:8070']
+
+  - job_name: 'telemetry'
+    scrape_interval: 10s
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['telemetry:8100']
+
+  - job_name: 'ic_sim'
+    scrape_interval: 10s
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['ic_sim:8060']
