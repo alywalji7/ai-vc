@@ -44,6 +44,10 @@ args = "IC Simulator Service"
 task = "workflow.run"
 args = "Term Sheet Service"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Telemetry Service"
+
 [[workflows.workflow]]
 name = "Frontend Service"
 author = "agent"
@@ -164,6 +168,21 @@ task = "shell.exec"
 args = "cd services/term_sheet && pip install -r requirements.txt && python main.py"
 waitForPort = 8070
 
+[[workflows.workflow]]
+name = "Telemetry Service"
+author = "agent"
+
+[workflows.workflow.metadata]
+agentRequireRestartOnSave = false
+
+[[workflows.workflow.tasks]]
+task = "packager.installForAll"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd services/telemetry && pip install -r requirements.txt && python run.py"
+waitForPort = 8100
+
 [deployment]
 run = ["sh", "-c", "cd services/frontend && npm install && npm run dev -- -p 5000"]
 
@@ -202,6 +221,10 @@ externalPort = 3003
 [[ports]]
 localPort = 8095
 externalPort = 4200
+
+[[ports]]
+localPort = 8100
+externalPort = 6000
 
 [[ports]]
 localPort = 9090
