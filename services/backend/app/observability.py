@@ -130,10 +130,13 @@ class PrometheusMiddleware(BaseHTTPMiddleware):
         return response
 
 
-async def metrics_endpoint():
+async def metrics_endpoint(request: Request):
     """
     Endpoint to expose Prometheus metrics.
     
+    Args:
+        request: The incoming request
+        
     Returns:
         Response with Prometheus metrics in text format
     """
