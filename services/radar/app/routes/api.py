@@ -3,15 +3,43 @@ API routes for the Deal-Flow Radar service.
 """
 import logging
 import json
+import os
+import sys
 from datetime import datetime
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy.orm import Session
+
+# Add libs to path
+sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(__file__)))), "libs"))
+
+# Import cost guardrail components
+try:
+    from cost_guardrails.rate_limiter import rate_limit
+    from cost_guardrails.openai_metering import track_openai_usage
+    RATE_LIMITING_ENABLED = True
+except ImportError:
+    # Fallback if imports fail
+    logging.warning("Cost guardrails module not found. Rate limiting disabled.")
+    RATE_LIMITING_ENABLED = False
+    
+    # Create dummy decorator
+    def rate_limit(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
+    
+    def track_openai_usage(*args, **kwargs):
+        return 0
 
 from ..database import get_db
 from ..models import Shortlist, ShortlistItem, ModelMetadata
 from ..service import get_daily_shortlist, handle_mock_data, load_model, enqueue_dataroom_task
+
+# Environment variables
+DEFAULT_REQUESTS_PER_MINUTE = int(os.environ.get("RADAR_REQUESTS_PER_MINUTE", "10"))  # Lower limit for radar
+DEFAULT_TOKEN_QUOTA = int(os.environ.get("RADAR_TOKEN_QUOTA", "50000"))  # 50K tokens per user per day
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -38,7 +66,12 @@ except Exception as e:
 
 
 @router.get("/radar/daily_shortlist", response_model=List[ShortlistItem])
+@rate_limit(
+    requests_per_minute=DEFAULT_REQUESTS_PER_MINUTE,
+    token_quota=DEFAULT_TOKEN_QUOTA
+)
 async def get_shortlist(
+    request: Request,
     limit: int = Query(10, ge=1, le=50, description="Maximum number of companies to return"),
     db: Session = Depends(get_db),
 ):
