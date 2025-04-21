@@ -1,141 +1,120 @@
 """
 Database models for the Portfolio Telemetry service.
 
-This module defines SQLAlchemy models representing portfolio companies,
-their financial metrics, and follow-on investment decisions.
+This module defines the SQLAlchemy models for storing portfolio company data,
+financial metrics, and follow-on investment decisions.
 """
-from datetime import datetime
-from typing import Optional
 import enum
+from datetime import datetime
+from typing import Optional, List
 
-from sqlalchemy import (
-    Column, Integer, String, Float, Boolean, DateTime, 
-    ForeignKey, Text, Enum, create_engine
-)
+import sqlalchemy as sa
+from sqlalchemy import Column, String, Float, DateTime, Boolean, Enum, Integer, ForeignKey, Text
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, sessionmaker
+from sqlalchemy.orm import relationship
 
 Base = declarative_base()
 
-class CompanyStage(enum.Enum):
-    """Enumeration of possible company stages."""
-    SEED = "seed"
-    SERIES_A = "series_a"
-    SERIES_B = "series_b"
-    SERIES_C = "series_c"
-    SERIES_D_PLUS = "series_d_plus"
-    GROWTH = "growth"
-    PRE_IPO = "pre_ipo"
-
 class CompanySector(enum.Enum):
-    """Enumeration of possible company sectors."""
-    SAAS = "saas"
-    FINTECH = "fintech"
-    HEALTH = "health"
-    AI = "ai"
-    HARDWARE = "hardware"
-    CONSUMER = "consumer"
-    MARKETPLACE = "marketplace"
-    ENTERPRISE = "enterprise"
-    OTHER = "other"
+    """Enumeration of company sectors."""
+    SAAS = "SAAS"
+    FINTECH = "FINTECH"
+    HEALTHTECH = "HEALTHTECH"
+    MARKETPLACE = "MARKETPLACE"
+    HARDWARE = "HARDWARE"
+    AI = "AI"
+    CONSUMER = "CONSUMER"
+    ENTERPRISE = "ENTERPRISE"
+    OTHER = "OTHER"
+
+class CompanyStage(enum.Enum):
+    """Enumeration of company funding stages."""
+    PRE_SEED = "PRE_SEED"
+    SEED = "SEED"
+    SERIES_A = "SERIES_A"
+    SERIES_B = "SERIES_B"
+    SERIES_C = "SERIES_C"
+    SERIES_D_PLUS = "SERIES_D_PLUS"
+
+class TriggerType(enum.Enum):
+    """Enumeration of follow-on decision trigger types."""
+    RUNWAY = "runway"
+    GROWTH = "growth"
+    STRATEGIC = "strategic"
 
 class PortfolioCompany(Base):
-    """Model representing a portfolio company."""
+    """Model for portfolio companies."""
     __tablename__ = "portfolio_companies"
     
     id = Column(String(50), primary_key=True)
     name = Column(String(100), nullable=False)
-    description = Column(Text)
+    description = Column(Text, nullable=True)
     sector = Column(Enum(CompanySector), nullable=False)
     stage = Column(Enum(CompanyStage), nullable=False)
-    investment_date = Column(DateTime, default=datetime.utcnow)
+    investment_date = Column(DateTime, nullable=False)
     investment_amount = Column(Float, nullable=False)
     ownership_percentage = Column(Float, nullable=False)
     valuation_at_investment = Column(Float, nullable=False)
     
     # Relationships
-    financial_metrics = relationship("FinancialMetric", back_populates="company")
-    follow_on_decisions = relationship("FollowOnDecision", back_populates="company")
+    financial_metrics = relationship("FinancialMetric", back_populates="company", cascade="all, delete-orphan")
+    follow_on_decisions = relationship("FollowOnDecision", back_populates="company", cascade="all, delete-orphan")
     
-    def __repr__(self):
+    def __repr__(self) -> str:
         return f"<PortfolioCompany(id='{self.id}', name='{self.name}', sector={self.sector})>"
 
 class FinancialMetric(Base):
-    """Model representing financial metrics for a portfolio company."""
+    """Model for company financial metrics."""
     __tablename__ = "financial_metrics"
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    company_id = Column(String(50), ForeignKey("portfolio_companies.id"), nullable=False)
-    date = Column(DateTime, default=datetime.utcnow, nullable=False)
+    company_id = Column(String(50), ForeignKey("portfolio_companies.id", ondelete="CASCADE"), nullable=False)
+    date = Column(DateTime, nullable=False, default=datetime.utcnow)
     
     # Cash metrics
-    cash_balance = Column(Float)
-    burn_rate = Column(Float)
-    runway_months = Column(Float)
+    cash_balance = Column(Float, nullable=True)
+    burn_rate = Column(Float, nullable=True)  # Monthly burn rate
+    runway_months = Column(Float, nullable=True)
     
     # Revenue metrics
-    mrr = Column(Float)  # Monthly Recurring Revenue
-    arr = Column(Float)  # Annual Recurring Revenue
-    revenue_growth = Column(Float)  # Month-over-month percentage
+    mrr = Column(Float, nullable=True)  # Monthly Recurring Revenue
+    arr = Column(Float, nullable=True)  # Annual Recurring Revenue
+    revenue_growth = Column(Float, nullable=True)  # Month-over-month percentage
     
     # Customer metrics
-    customer_count = Column(Integer)
-    new_customers = Column(Integer)
-    churned_customers = Column(Integer)
-    churn_rate = Column(Float)
+    customer_count = Column(Integer, nullable=True)
+    new_customers = Column(Integer, nullable=True)
+    churned_customers = Column(Integer, nullable=True)
+    churn_rate = Column(Float, nullable=True)  # Percentage
     
-    # Efficiency metrics
-    cac = Column(Float)  # Customer Acquisition Cost
-    ltv = Column(Float)  # Lifetime Value
-    ltv_cac_ratio = Column(Float)
-    
-    # Relationship
+    # Relationships
     company = relationship("PortfolioCompany", back_populates="financial_metrics")
     
-    def __repr__(self):
-        return f"<FinancialMetric(company_id='{self.company_id}', date='{self.date}')>"
+    def __repr__(self) -> str:
+        return f"<FinancialMetric(id={self.id}, company_id='{self.company_id}', date='{self.date}')>"
 
 class FollowOnDecision(Base):
-    """Model representing a follow-on investment decision."""
+    """Model for follow-on investment decisions."""
     __tablename__ = "follow_on_decisions"
     
     id = Column(Integer, primary_key=True, autoincrement=True)
-    company_id = Column(String(50), ForeignKey("portfolio_companies.id"), nullable=False)
-    date = Column(DateTime, default=datetime.utcnow, nullable=False)
-    
-    # Decision details
-    trigger_type = Column(String(50), nullable=False)  # 'runway', 'growth', 'opportunity', etc.
+    company_id = Column(String(50), ForeignKey("portfolio_companies.id", ondelete="CASCADE"), nullable=False)
+    date = Column(DateTime, nullable=False, default=datetime.utcnow)
+    trigger_type = Column(Enum(TriggerType), nullable=False)
     recommended_amount = Column(Float, nullable=False)
-    super_pro_rata = Column(Boolean, default=False)
-    expected_runway_extension = Column(Float)  # Additional months of runway
-    expected_ownership_increase = Column(Float)  # Percentage points
-    
-    # Decision rationale
-    analysis = Column(Text)
+    super_pro_rata = Column(Boolean, default=False, nullable=False)
+    expected_runway_extension = Column(Float, nullable=True)
+    expected_ownership_increase = Column(Float, nullable=True)
+    analysis = Column(Text, nullable=False)
     
     # Decision status
-    approved = Column(Boolean, default=None, nullable=True)
-    executed = Column(Boolean, default=False)
+    approved = Column(Boolean, default=False, nullable=False)
+    executed = Column(Boolean, default=False, nullable=False)
     execution_date = Column(DateTime, nullable=True)
     actual_amount = Column(Float, nullable=True)
     
-    # Relationship
+    # Relationships
     company = relationship("PortfolioCompany", back_populates="follow_on_decisions")
     
-    def __repr__(self):
-        return f"<FollowOnDecision(company_id='{self.company_id}', trigger_type='{self.trigger_type}', recommended_amount={self.recommended_amount})>"
-
-def initialize_db(db_url: str):
-    """
-    Initialize the database connection.
-    
-    Args:
-        db_url: Database connection URL
-        
-    Returns:
-        A tuple containing the engine and session factory
-    """
-    engine = create_engine(db_url)
-    SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-    Base.metadata.create_all(engine)
-    return engine, SessionLocal
+    def __repr__(self) -> str:
+        return f"<FollowOnDecision(id={self.id}, company_id='{self.company_id}', trigger_type={self.trigger_type})>"

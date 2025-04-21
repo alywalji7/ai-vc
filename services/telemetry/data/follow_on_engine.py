@@ -78,7 +78,7 @@ class FollowOnEngine:
             
             decision = {
                 "company_id": company_id,
-                "trigger_type": "runway",
+                "trigger_type": "RUNWAY",
                 "trigger_value": latest_metrics.runway_months,
                 "threshold": RUNWAY_THRESHOLD_MONTHS,
                 "recommended_amount": recommended_amount,

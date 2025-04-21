@@ -1,5 +1,8 @@
 """
-Data connectors for the Portfolio Telemetry service.
+Data access and processing modules for the Portfolio Telemetry service.
+
+This package contains connectors for various data sources and the
+follow-on decision engine.
 """
 
 from .banking_connector import BankingConnector
