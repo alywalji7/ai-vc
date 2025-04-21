@@ -297,7 +297,7 @@ async def collect_data_endpoint(
         "message": "Data collection started in the background"
     }
 
-@app.post("/analyze", tags=["Follow-On"], response_model=List[Dict[str, Any]])
+@app.post("/analyze", tags=["Follow-On"], response_model=Dict[str, Any])
 async def analyze_endpoint(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db)
