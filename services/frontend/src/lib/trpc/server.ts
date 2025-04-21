@@ -1,7 +1,7 @@
 import { initTRPC } from '@trpc/server';
 import superjson from 'superjson';
 
-// Create a new tRPC instance
+// Initialize tRPC backend
 const t = initTRPC.create({
   transformer: superjson,
 });

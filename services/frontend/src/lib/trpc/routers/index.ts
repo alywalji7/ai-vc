@@ -1,7 +1,7 @@
 import { router } from '../server';
 import { dashboardRouter } from './dashboard';
-import { dealMemosRouter } from './dealMemos';
-import { auditTrailRouter } from './auditTrail';
+import { dealMemosRouter } from './deal-memos';
+import { auditTrailRouter } from './audit-trail';
 
 export const appRouter = router({
   dashboard: dashboardRouter,
@@ -9,4 +9,5 @@ export const appRouter = router({
   auditTrail: auditTrailRouter,
 });
 
+// Export type definition of API
 export type AppRouter = typeof appRouter;
