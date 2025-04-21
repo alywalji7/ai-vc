@@ -1,182 +1,200 @@
 """
-Banking data connector for processing CSV files from banking platforms.
+Banking Connector module for the Portfolio Telemetry service.
+
+This module provides functionality to parse banking CSV files and
+extract financial metrics for portfolio companies.
 """
 import os
+import glob
 import logging
-from datetime import datetime
-from typing import Dict, List, Optional, Any
-import csv
+from typing import Dict, List, Optional
+from datetime import datetime, timedelta
+
 import pandas as pd
 import numpy as np
 from sqlalchemy.orm import Session
 
 from models.database import PortfolioCompany, FinancialMetric
 
+# Configure logging
 logger = logging.getLogger(__name__)
 
 class BankingConnector:
     """
-    Connector for importing and processing banking data from CSV files.
-    
-    This class handles processing CSV exports from banking platforms to extract
-    financial metrics such as cash balance, burn rate, and runway.
+    Connector for processing banking CSV files and extracting financial metrics.
     """
     
-    def __init__(self, db: Session):
-        """Initialize the banking connector with a database session."""
-        self.db = db
-        self.csv_directory = os.environ.get("BANKING_CSV_DIR", "data/banking_csvs")
-    
-    def process_csv_files(self) -> List[Dict[str, Any]]:
+    def __init__(self, db: Session, csv_dir: str):
         """
-        Process all CSV files in the configured directory.
+        Initialize the banking connector.
+        
+        Args:
+            db: Database session
+            csv_dir: Directory containing banking CSV files
+        """
+        self.db = db
+        self.csv_dir = csv_dir
+        logger.info(f"Banking connector initialized with CSV directory: {csv_dir}")
+    
+    def get_latest_csv_files(self) -> Dict[str, str]:
+        """
+        Get the latest CSV file for each company.
         
         Returns:
-            List of processed data dictionaries
+            Dictionary mapping company IDs to file paths
         """
-        results = []
+        company_files = {}
         
-        # Ensure directory exists
-        if not os.path.exists(self.csv_directory):
-            logger.warning(f"Banking CSV directory does not exist: {self.csv_directory}")
-            return results
-            
-        # Iterate through CSV files in the directory
-        for filename in os.listdir(self.csv_directory):
-            if not filename.endswith('.csv'):
-                continue
-                
+        # Pattern: {company_id}_banking_{date}.csv
+        pattern = os.path.join(self.csv_dir, "*_banking_*.csv")
+        
+        for filepath in glob.glob(pattern):
+            filename = os.path.basename(filepath)
             try:
-                # Extract company ID from filename (assuming format: {company_id}_banking_YYYY-MM-DD.csv)
-                parts = filename.split('_')
-                company_id = parts[0]
+                # Extract company ID from filename
+                company_id = filename.split("_banking_")[0]
                 
-                # Check if company exists in database
-                company = self.db.query(PortfolioCompany).filter(PortfolioCompany.company_id == company_id).first()
-                if not company:
-                    logger.warning(f"Company with ID {company_id} not found in database, skipping file {filename}")
-                    continue
-                
-                # Process the CSV file
-                file_path = os.path.join(self.csv_directory, filename)
-                metrics = self._extract_metrics_from_csv(file_path, company_id)
-                
-                if metrics:
-                    results.append(metrics)
-                    self._save_metrics_to_database(metrics)
+                # Check if this is the latest file for this company
+                if company_id not in company_files:
+                    company_files[company_id] = filepath
+                else:
+                    # Compare dates and keep the latest
+                    current_date_str = os.path.splitext(company_files[company_id].split("_banking_")[1])[0]
+                    new_date_str = os.path.splitext(filename.split("_banking_")[1])[0]
                     
-            except Exception as e:
-                logger.error(f"Error processing banking CSV file {filename}: {str(e)}")
+                    current_date = datetime.strptime(current_date_str, "%Y-%m-%d")
+                    new_date = datetime.strptime(new_date_str, "%Y-%m-%d")
+                    
+                    if new_date > current_date:
+                        company_files[company_id] = filepath
+            
+            except (IndexError, ValueError) as e:
+                logger.warning(f"Skipping malformed filename: {filename}. Error: {str(e)}")
         
-        return results
+        return company_files
     
-    def _extract_metrics_from_csv(self, file_path: str, company_id: str) -> Optional[Dict[str, Any]]:
+    def parse_csv_file(self, file_path: str) -> pd.DataFrame:
         """
-        Extract financial metrics from a CSV file.
+        Parse a banking CSV file into a pandas DataFrame.
         
         Args:
             file_path: Path to the CSV file
-            company_id: ID of the company
             
         Returns:
-            Dictionary of extracted financial metrics or None if extraction failed
+            DataFrame containing transaction data
         """
         try:
-            # Read the CSV file into a pandas DataFrame
-            df = pd.read_csv(file_path)
-            
-            # Standardize column names (lowercase, replace spaces with underscores)
-            df.columns = [col.lower().replace(' ', '_') for col in df.columns]
-            
-            # Calculate metrics
-            # Note: This is a simplified implementation. In a real-world scenario,
-            # the CSV structure would be specific to the banking platform and would 
-            # require custom parsing logic.
-            
-            # Calculate cash metrics
-            latest_date = pd.to_datetime(df['date'].max()) if 'date' in df.columns else datetime.now()
-            
-            # Get the cash balance from the most recent entry
-            if 'balance' in df.columns:
-                cash_balance = float(df.loc[df['date'] == df['date'].max(), 'balance'].iloc[0])
-            else:
-                # Fallback: Assume the CSV has a simple list of transactions, and the cash balance
-                # is the sum of all transactions
-                cash_balance = float(df['amount'].sum() if 'amount' in df.columns else 0)
-                
-            # Calculate burn rate (average of negative cash flow over the last 3 months)
-            # This is a simplified calculation
-            if 'amount' in df.columns and 'date' in df.columns:
-                df['date'] = pd.to_datetime(df['date'])
-                three_months_ago = latest_date - pd.Timedelta(days=90)
-                recent_df = df[df['date'] >= three_months_ago]
-                
-                # Sum only outflows (negative amounts)
-                outflows = recent_df[recent_df['amount'] < 0]['amount']
-                total_outflow = abs(outflows.sum()) if not outflows.empty else 0
-                
-                # Calculate monthly burn rate (total outflow divided by 3 months)
-                monthly_burn_rate = total_outflow / 3
-            else:
-                monthly_burn_rate = 0
-                
-            # Calculate runway in months (cash balance / monthly burn rate)
-            runway_months = cash_balance / monthly_burn_rate if monthly_burn_rate > 0 else float('inf')
-            
-            # Create metrics dictionary
-            metrics = {
-                "company_id": company_id,
-                "date": latest_date,
-                "cash_balance": cash_balance,
-                "cash_burn_rate": monthly_burn_rate,
-                "runway_months": runway_months,
-                "data_source": "banking_csv",
-                "raw_data": {
-                    "file_name": os.path.basename(file_path),
-                    "processing_date": datetime.now().isoformat(),
-                    "summary_stats": {
-                        "num_transactions": len(df),
-                        "date_range": [df['date'].min(), df['date'].max()] if 'date' in df.columns else None
-                    }
-                }
-            }
-            
-            return metrics
-            
+            df = pd.read_csv(file_path, parse_dates=["date"])
+            logger.info(f"Successfully parsed {file_path} with {len(df)} transactions")
+            return df
         except Exception as e:
-            logger.error(f"Error extracting metrics from banking CSV {file_path}: {str(e)}")
-            return None
+            logger.error(f"Error parsing CSV file {file_path}: {str(e)}")
+            raise
     
-    def _save_metrics_to_database(self, metrics: Dict[str, Any]) -> None:
+    def calculate_metrics(self, df: pd.DataFrame) -> Dict[str, float]:
         """
-        Save the extracted metrics to the database.
+        Calculate financial metrics from transaction data.
         
         Args:
-            metrics: Dictionary of financial metrics to save
-        """
-        try:
-            # Check if we already have metrics for this company and date
-            existing_metric = self.db.query(FinancialMetric).filter(
-                FinancialMetric.company_id == metrics["company_id"],
-                FinancialMetric.date == metrics["date"]
-            ).first()
+            df: DataFrame containing transaction data
             
-            if existing_metric:
-                # Update existing metric
-                for key, value in metrics.items():
-                    if key != "company_id" and key != "date" and hasattr(existing_metric, key):
-                        setattr(existing_metric, key, value)
-                        
-                self.db.commit()
-                logger.info(f"Updated existing financial metrics for {metrics['company_id']} on {metrics['date']}")
-                
+        Returns:
+            Dictionary of financial metrics
+        """
+        metrics = {}
+        
+        # Calculate cash balance (most recent balance in the DataFrame)
+        metrics["cash_balance"] = df["balance"].iloc[0]
+        
+        # Calculate burn rate (average of outgoing transactions in the last 30 days)
+        thirty_days_ago = df["date"].iloc[0] - timedelta(days=30)
+        last_30_days_df = df[df["date"] >= thirty_days_ago]
+        
+        # Only consider expense transactions (negative amounts)
+        expenses_df = last_30_days_df[last_30_days_df["amount"] < 0]
+        
+        if not expenses_df.empty:
+            # Monthly burn rate is the sum of all expenses
+            metrics["burn_rate"] = abs(expenses_df["amount"].sum())
+            
+            # Calculate runway in months
+            if metrics["burn_rate"] > 0:
+                metrics["runway_months"] = metrics["cash_balance"] / metrics["burn_rate"]
             else:
-                # Create new metric
-                new_metric = FinancialMetric(**metrics)
-                self.db.add(new_metric)
-                self.db.commit()
-                logger.info(f"Saved new financial metrics for {metrics['company_id']} on {metrics['date']}")
+                metrics["runway_months"] = 999.0  # Arbitrary large number for infinite runway
+        else:
+            # No expenses in the last 30 days
+            metrics["burn_rate"] = 0.0
+            metrics["runway_months"] = 999.0
+        
+        return metrics
+    
+    def update_company_metrics(self, company_id: str, metrics: Dict[str, float]) -> None:
+        """
+        Update database with the latest financial metrics for a company.
+        
+        Args:
+            company_id: ID of the company to update
+            metrics: Dictionary of financial metrics
+        """
+        # Check if company exists
+        company = self.db.query(PortfolioCompany).filter_by(id=company_id).first()
+        
+        if not company:
+            logger.warning(f"Company with ID {company_id} not found in database. Skipping metrics update.")
+            return
+        
+        # Create new financial metrics record
+        new_metrics = FinancialMetric(
+            company_id=company_id,
+            date=datetime.utcnow(),
+            cash_balance=metrics.get("cash_balance"),
+            burn_rate=metrics.get("burn_rate"),
+            runway_months=metrics.get("runway_months")
+        )
+        
+        self.db.add(new_metrics)
+        self.db.commit()
+        
+        logger.info(f"Updated financial metrics for company {company_id}")
+    
+    def process_all_companies(self) -> List[Dict]:
+        """
+        Process all available banking data for portfolio companies.
+        
+        Returns:
+            List of dictionaries with processing results
+        """
+        results = []
+        
+        # Get latest CSV files for all companies
+        company_files = self.get_latest_csv_files()
+        
+        for company_id, file_path in company_files.items():
+            try:
+                # Parse the CSV file
+                df = self.parse_csv_file(file_path)
                 
-        except Exception as e:
-            self.db.rollback()
-            logger.error(f"Error saving metrics to database: {str(e)}")
+                # Calculate financial metrics
+                metrics = self.calculate_metrics(df)
+                
+                # Update the database
+                self.update_company_metrics(company_id, metrics)
+                
+                results.append({
+                    "company_id": company_id,
+                    "file_processed": file_path,
+                    "metrics": metrics,
+                    "success": True
+                })
+                
+            except Exception as e:
+                logger.error(f"Error processing company {company_id}: {str(e)}")
+                results.append({
+                    "company_id": company_id,
+                    "file_processed": file_path,
+                    "error": str(e),
+                    "success": False
+                })
+        
+        return results

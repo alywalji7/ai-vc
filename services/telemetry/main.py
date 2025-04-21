@@ -1,16 +1,17 @@
 """
-Portfolio Telemetry & Follow-On Engine Service.
+Main module for the Portfolio Telemetry service.
 
-This service collects financial data from portfolio companies via
-banking CSVs and Stripe API, analyzes the data, and automatically
-triggers follow-on investment decisions based on predefined criteria.
+This module provides a FastAPI application for monitoring portfolio companies
+and making follow-on investment decisions.
 """
 import os
 import logging
-from typing import List, Dict, Any, Optional
+from typing import Dict, List, Any, Optional
 from datetime import datetime, timedelta
-import time
+from functools import lru_cache
+
 from dotenv import load_dotenv
+load_dotenv()
 
 from fastapi import FastAPI, Depends, HTTPException, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,11 +19,11 @@ from sqlalchemy.orm import Session
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.cron import CronTrigger
 
-from models import PortfolioCompany, FinancialMetric, FollowOnDecision, init_db, get_db
-from data import BankingConnector, StripeConnector, FollowOnEngine
-
-# Load environment variables
-load_dotenv()
+from models import PortfolioCompany, FinancialMetric, FollowOnDecision, get_db
+from data.banking_connector import BankingConnector
+from data.stripe_connector import StripeConnector
+from data.follow_on_engine import FollowOnEngine
+from tests.data_generator import generate_test_data
 
 # Configure logging
 logging.basicConfig(
@@ -31,10 +32,10 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Create FastAPI app
+# Initialize FastAPI app
 app = FastAPI(
-    title="Portfolio Telemetry & Follow-On Engine API",
-    description="API for monitoring portfolio companies and triggering follow-on investments",
+    title="Portfolio Telemetry & Follow-On Engine",
+    description="Service for monitoring portfolio company performance and making follow-on investment decisions",
     version="1.0.0",
 )
 
@@ -47,223 +48,346 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize database
+# Background scheduler for periodic tasks
+scheduler = BackgroundScheduler()
+
+# Get configuration from environment
+BANKING_CSV_DIR = os.environ.get("BANKING_CSV_DIR", "data/banking_csvs")
+
+@lru_cache()
+def get_banking_connector(db: Session = Depends(get_db)) -> BankingConnector:
+    """
+    Get a singleton BankingConnector instance.
+    
+    Args:
+        db: Database session
+        
+    Returns:
+        BankingConnector instance
+    """
+    return BankingConnector(db, BANKING_CSV_DIR)
+
+@lru_cache()
+def get_stripe_connector(db: Session = Depends(get_db)) -> StripeConnector:
+    """
+    Get a singleton StripeConnector instance.
+    
+    Args:
+        db: Database session
+        
+    Returns:
+        StripeConnector instance
+    """
+    return StripeConnector(db)
+
+@lru_cache()
+def get_follow_on_engine(db: Session = Depends(get_db)) -> FollowOnEngine:
+    """
+    Get a singleton FollowOnEngine instance.
+    
+    Args:
+        db: Database session
+        
+    Returns:
+        FollowOnEngine instance
+    """
+    return FollowOnEngine(db)
+
 @app.on_event("startup")
-async def startup_db_client():
-    init_db()
+async def startup_event():
+    """
+    Startup event handler.
+    """
     logger.info("Database initialized")
     
-    # Start the scheduler for background tasks
-    scheduler = BackgroundScheduler()
-    
-    # Schedule data collection every 24 hours (at 1:00 AM)
+    # Schedule banking data collection job (every 24 hours at 2 AM)
     scheduler.add_job(
-        collect_all_data_background,
-        trigger=CronTrigger(hour=1, minute=0),
-        id="collect_data_job",
+        collect_financial_data,
+        CronTrigger(hour=2, minute=0),
+        id="collect_financial_data",
         name="Collect financial data every 24 hours",
         replace_existing=True,
     )
     
-    # Schedule analysis every 24 hours (at 2:00 AM, after data collection)
+    # Schedule follow-on analysis job (every 24 hours at 4 AM)
     scheduler.add_job(
-        analyze_all_companies_background,
-        trigger=CronTrigger(hour=2, minute=0),
-        id="analyze_companies_job",
+        analyze_portfolio,
+        CronTrigger(hour=4, minute=0),
+        id="analyze_portfolio",
         name="Analyze portfolio companies every 24 hours",
         replace_existing=True,
     )
     
+    # Start the scheduler
     scheduler.start()
     logger.info("Background scheduler started")
 
-# Background task functions
-def collect_all_data_background():
-    """Collect data from all sources for all companies."""
-    logger.info("Starting scheduled data collection")
+@app.on_event("shutdown")
+async def shutdown_event():
+    """
+    Shutdown event handler.
+    """
+    scheduler.shutdown()
+    logger.info("Background scheduler shut down")
+
+# API endpoints
+
+@app.get("/", tags=["Status"])
+async def root():
+    """
+    Root endpoint.
+    """
+    return {
+        "service": "Portfolio Telemetry & Follow-On Engine",
+        "status": "operational",
+        "version": "1.0.0",
+    }
+
+@app.get("/companies", tags=["Companies"], response_model=List[Dict[str, Any]])
+async def get_companies(db: Session = Depends(get_db)):
+    """
+    Get all portfolio companies.
+    """
+    companies = db.query(PortfolioCompany).all()
+    return [
+        {
+            "id": company.id,
+            "name": company.name,
+            "description": company.description,
+            "sector": company.sector.value,
+            "stage": company.stage.value,
+            "investment_date": company.investment_date,
+            "investment_amount": company.investment_amount,
+            "ownership_percentage": company.ownership_percentage,
+            "valuation_at_investment": company.valuation_at_investment,
+        }
+        for company in companies
+    ]
+
+@app.get("/companies/{company_id}", tags=["Companies"], response_model=Dict[str, Any])
+async def get_company(company_id: str, db: Session = Depends(get_db)):
+    """
+    Get a specific portfolio company.
+    """
+    company = db.query(PortfolioCompany).filter_by(id=company_id).first()
     
-    # Get a new database session
-    db = next(get_db())
+    if not company:
+        raise HTTPException(status_code=404, detail=f"Company {company_id} not found")
+    
+    return {
+        "id": company.id,
+        "name": company.name,
+        "description": company.description,
+        "sector": company.sector.value,
+        "stage": company.stage.value,
+        "investment_date": company.investment_date,
+        "investment_amount": company.investment_amount,
+        "ownership_percentage": company.ownership_percentage,
+        "valuation_at_investment": company.valuation_at_investment,
+    }
+
+@app.get("/companies/{company_id}/metrics", tags=["Metrics"], response_model=List[Dict[str, Any]])
+async def get_company_metrics(
+    company_id: str, 
+    days: int = 30,
+    db: Session = Depends(get_db)
+):
+    """
+    Get financial metrics for a specific company.
+    
+    Args:
+        company_id: ID of the company
+        days: Number of days of history to retrieve
+    """
+    company = db.query(PortfolioCompany).filter_by(id=company_id).first()
+    
+    if not company:
+        raise HTTPException(status_code=404, detail=f"Company {company_id} not found")
+    
+    # Get metrics within the specified time range
+    start_date = datetime.utcnow() - timedelta(days=days)
+    
+    metrics = db.query(FinancialMetric).filter(
+        FinancialMetric.company_id == company_id,
+        FinancialMetric.date >= start_date
+    ).order_by(FinancialMetric.date.desc()).all()
+    
+    return [
+        {
+            "id": metric.id,
+            "date": metric.date,
+            "cash_balance": metric.cash_balance,
+            "burn_rate": metric.burn_rate,
+            "runway_months": metric.runway_months,
+            "mrr": metric.mrr,
+            "arr": metric.arr,
+            "revenue_growth": metric.revenue_growth,
+            "customer_count": metric.customer_count,
+            "new_customers": metric.new_customers,
+            "churned_customers": metric.churned_customers,
+            "churn_rate": metric.churn_rate,
+        }
+        for metric in metrics
+    ]
+
+@app.get("/companies/{company_id}/follow-on", tags=["Follow-On"], response_model=Dict[str, Any])
+async def get_follow_on_decision(
+    company_id: str,
+    db: Session = Depends(get_db),
+    follow_on_engine: FollowOnEngine = Depends(get_follow_on_engine)
+):
+    """
+    Get the latest follow-on decision for a specific company.
+    """
+    company = db.query(PortfolioCompany).filter_by(id=company_id).first()
+    
+    if not company:
+        raise HTTPException(status_code=404, detail=f"Company {company_id} not found")
+    
+    # Check if there's a recent decision in the database
+    recent_decision = db.query(FollowOnDecision).filter(
+        FollowOnDecision.company_id == company_id,
+        FollowOnDecision.date >= datetime.utcnow() - timedelta(days=7)
+    ).order_by(FollowOnDecision.date.desc()).first()
+    
+    if recent_decision:
+        return {
+            "id": recent_decision.id,
+            "company_id": recent_decision.company_id,
+            "date": recent_decision.date,
+            "trigger_type": recent_decision.trigger_type,
+            "recommended_amount": recent_decision.recommended_amount,
+            "super_pro_rata": recent_decision.super_pro_rata,
+            "expected_runway_extension": recent_decision.expected_runway_extension,
+            "expected_ownership_increase": recent_decision.expected_ownership_increase,
+            "analysis": recent_decision.analysis,
+            "approved": recent_decision.approved,
+            "executed": recent_decision.executed,
+            "execution_date": recent_decision.execution_date,
+            "actual_amount": recent_decision.actual_amount,
+            "is_recent": True
+        }
+    
+    # Generate a new decision
+    decision = follow_on_engine.follow_on_decision(company_id)
+    
+    if not decision:
+        return {
+            "company_id": company_id,
+            "date": datetime.utcnow(),
+            "trigger_type": None,
+            "analysis": "No follow-on investment needed at this time.",
+            "is_recent": False
+        }
+    
+    return decision
+
+@app.post("/collect-data", tags=["Data Collection"], response_model=Dict[str, Any])
+async def collect_data_endpoint(
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """
+    Manually trigger data collection from all sources.
+    """
+    background_tasks.add_task(collect_financial_data, db)
+    
+    return {
+        "status": "success",
+        "message": "Data collection started in the background"
+    }
+
+@app.post("/analyze", tags=["Follow-On"], response_model=List[Dict[str, Any]])
+async def analyze_endpoint(
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """
+    Manually trigger follow-on analysis for all companies.
+    """
+    background_tasks.add_task(analyze_portfolio, db)
+    
+    return {
+        "status": "success",
+        "message": "Portfolio analysis started in the background"
+    }
+
+@app.post("/seed-test-data", tags=["Testing"], response_model=Dict[str, Any])
+async def seed_test_data(db: Session = Depends(get_db)):
+    """
+    Seed the database with test data.
+    """
+    result = generate_test_data(db)
+    
+    return {
+        "status": "success",
+        "message": "Test data seeded successfully",
+        "data": result
+    }
+
+# Background tasks
+
+def collect_financial_data(db: Session = None):
+    """
+    Collect financial data from all sources.
+    
+    Args:
+        db: Database session (optional, will be created if not provided)
+    """
+    if db is None:
+        # Create a new session if one wasn't provided
+        db_generator = get_db()
+        db = next(db_generator)
     
     try:
-        # Process banking CSVs
-        banking_connector = BankingConnector(db)
-        banking_results = banking_connector.process_csv_files()
-        logger.info(f"Processed {len(banking_results)} banking CSV files")
+        logger.info("Starting financial data collection")
+        
+        # Process banking CSV files
+        banking_connector = BankingConnector(db, BANKING_CSV_DIR)
+        banking_results = banking_connector.process_all_companies()
         
         # Process Stripe data
         stripe_connector = StripeConnector(db)
         stripe_results = stripe_connector.process_all_companies()
-        logger.info(f"Processed Stripe data for {len(stripe_results)} companies")
-    
+        
+        logger.info(f"Completed financial data collection: {len(banking_results)} banking sources, {len(stripe_results)} Stripe sources")
+        
     except Exception as e:
-        logger.error(f"Error in scheduled data collection: {str(e)}")
+        logger.error(f"Error collecting financial data: {str(e)}")
     
     finally:
-        db.close()
-        
-def analyze_all_companies_background():
-    """Analyze all companies and trigger follow-on decisions."""
-    logger.info("Starting scheduled company analysis")
+        if db is not None:
+            db.close()
+
+def analyze_portfolio(db: Session = None):
+    """
+    Analyze all portfolio companies for follow-on investments.
     
-    # Get a new database session
-    db = next(get_db())
+    Args:
+        db: Database session (optional, will be created if not provided)
+    """
+    if db is None:
+        # Create a new session if one wasn't provided
+        db_generator = get_db()
+        db = next(db_generator)
     
     try:
-        # Analyze all companies
+        logger.info("Starting portfolio analysis")
+        
+        # Run the follow-on engine
         follow_on_engine = FollowOnEngine(db)
         decisions = follow_on_engine.analyze_all_companies()
-        logger.info(f"Created {len(decisions)} follow-on decisions")
-    
+        
+        logger.info(f"Completed portfolio analysis: {len(decisions)} follow-on opportunities identified")
+        
     except Exception as e:
-        logger.error(f"Error in scheduled company analysis: {str(e)}")
+        logger.error(f"Error analyzing portfolio: {str(e)}")
     
     finally:
-        db.close()
+        if db is not None:
+            db.close()
 
-# API Routes
-
-@app.get("/")
-async def root():
-    """Root endpoint returning service information."""
-    return {
-        "service": "Portfolio Telemetry & Follow-On Engine",
-        "status": "operational",
-        "endpoints": [
-            "/companies",
-            "/metrics",
-            "/decisions",
-            "/collect-data",
-            "/analyze-companies",
-            "/follow-on-decision/{company_id}"
-        ]
-    }
-
-@app.get("/companies", response_model=List[Dict[str, Any]])
-async def get_companies(db: Session = Depends(get_db)):
-    """Get all portfolio companies."""
-    companies = db.query(PortfolioCompany).all()
-    return [{
-        "id": company.id,
-        "company_id": company.company_id,
-        "name": company.name,
-        "sector": company.sector,
-        "funding_stage": company.funding_stage,
-        "investment_date": company.investment_date,
-        "investment_amount": company.investment_amount,
-        "ownership_percentage": company.ownership_percentage,
-        "valuation_at_investment": company.valuation_at_investment
-    } for company in companies]
-
-@app.get("/metrics", response_model=List[Dict[str, Any]])
-async def get_metrics(
-    company_id: Optional[str] = None, 
-    limit: int = 10, 
-    db: Session = Depends(get_db)
-):
-    """Get financial metrics for companies."""
-    query = db.query(FinancialMetric)
-    
-    if company_id:
-        query = query.filter(FinancialMetric.company_id == company_id)
-        
-    metrics = query.order_by(FinancialMetric.date.desc()).limit(limit).all()
-    
-    return [{
-        "id": metric.id,
-        "company_id": metric.company_id,
-        "date": metric.date,
-        "cash_balance": metric.cash_balance,
-        "cash_burn_rate": metric.cash_burn_rate,
-        "runway_months": metric.runway_months,
-        "revenue": metric.revenue,
-        "revenue_growth_rate": metric.revenue_growth_rate,
-        "customer_count": metric.customer_count,
-        "customer_growth_rate": metric.customer_growth_rate,
-        "churn_rate": metric.churn_rate,
-        "growth_vs_peers": metric.growth_vs_peers,
-        "data_source": metric.data_source
-    } for metric in metrics]
-
-@app.get("/decisions", response_model=List[Dict[str, Any]])
-async def get_decisions(
-    company_id: Optional[str] = None, 
-    status: Optional[str] = None,
-    limit: int = 10, 
-    db: Session = Depends(get_db)
-):
-    """Get follow-on investment decisions."""
-    query = db.query(FollowOnDecision)
-    
-    if company_id:
-        query = query.filter(FollowOnDecision.company_id == company_id)
-        
-    if status:
-        query = query.filter(FollowOnDecision.decision == status)
-        
-    decisions = query.order_by(FollowOnDecision.decision_date.desc()).limit(limit).all()
-    
-    return [{
-        "id": decision.id,
-        "company_id": decision.company_id,
-        "decision_date": decision.decision_date,
-        "trigger_type": decision.trigger_type,
-        "trigger_value": decision.trigger_value,
-        "decision": decision.decision,
-        "recommended_amount": decision.recommended_amount,
-        "recommended_valuation": decision.recommended_valuation,
-        "pro_rata_amount": decision.pro_rata_amount,
-        "super_pro_rata": decision.super_pro_rata,
-        "rationale": decision.rationale
-    } for decision in decisions]
-
-@app.post("/collect-data", response_model=Dict[str, Any])
-async def collect_data(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    """Manually trigger data collection."""
-    background_tasks.add_task(collect_all_data_background)
-    return {"status": "data collection started in the background"}
-
-@app.post("/analyze-companies", response_model=Dict[str, Any])
-async def analyze_companies(background_tasks: BackgroundTasks, db: Session = Depends(get_db)):
-    """Manually trigger company analysis."""
-    background_tasks.add_task(analyze_all_companies_background)
-    return {"status": "company analysis started in the background"}
-
-@app.post("/follow-on-decision/{company_id}", response_model=Dict[str, Any])
-async def trigger_follow_on_decision(company_id: str, db: Session = Depends(get_db)):
-    """Manually trigger a follow-on decision for a specific company."""
-    # Check if company exists
-    company = db.query(PortfolioCompany).filter(PortfolioCompany.company_id == company_id).first()
-    if not company:
-        raise HTTPException(status_code=404, detail=f"Company with ID {company_id} not found")
-    
-    # Trigger follow-on decision
-    follow_on_engine = FollowOnEngine(db)
-    decision = follow_on_engine.follow_on_decision(company_id)
-    
-    if not decision:
-        return {"status": "no trigger conditions met for follow-on decision"}
-    
-    return decision
-
-# Test/Demo data setup endpoint (for acceptance testing)
-@app.post("/setup-test-data", response_model=Dict[str, Any])
-async def setup_test_data(db: Session = Depends(get_db)):
-    """
-    Set up test data for acceptance testing.
-    
-    WARNING: This is for testing only and will create synthetic data in the database.
-    """
-    from tests.data_generator import generate_test_data
-    result = generate_test_data(db)
-    return result
-
-# Entry point for running with Uvicorn
+# For local testing
 if __name__ == "__main__":
     import uvicorn
-    
-    port = int(os.environ.get("PORT", 8100))
-    host = os.environ.get("HOST", "0.0.0.0")
-    
-    logger.info(f"Starting Portfolio Telemetry service at http://{host}:{port}")
-    uvicorn.run("main:app", host=host, port=port, reload=True)
+    uvicorn.run(app, host="0.0.0.0", port=8100)
