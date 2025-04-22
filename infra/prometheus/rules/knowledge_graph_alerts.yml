@@ -1,0 +1,56 @@
+groups:
+  - name: knowledge_graph_alerts
+    rules:
+      - alert: IngestFailureRateHigh
+        expr: rate(ingest_failure_total[5m]) > 0.2
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "High rate of ingestion failures"
+          description: "Ingestion failure rate is {{ $value | humanizePercentage }} over the last 5 minutes"
+      
+      - alert: NoRecentIngests
+        expr: (time() - max(max_over_time(github_ingest_success_total[24h]), max_over_time(crunchbase_ingest_success_total[24h]))) > 86400
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "No recent data ingestions"
+          description: "No successful data ingestions have been recorded in the last 24 hours"
+      
+      - alert: EntityCountDecrease
+        expr: sum(graph_entity_count) < sum(graph_entity_count offset 1h) * 0.9
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Entity count decreased significantly"
+          description: "Knowledge graph entity count decreased by more than 10% in the last hour"
+      
+      - alert: IngestServiceDown
+        expr: up{job="graph_ingest"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Knowledge Graph Ingest service is down"
+          description: "The Knowledge Graph Ingest service has been down for more than 5 minutes"
+      
+      - alert: MetricsEndpointDown
+        expr: probe_success{job="graph_ingest_metrics"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Knowledge Graph metrics endpoint is down"
+          description: "The Knowledge Graph metrics endpoint has been down for more than 5 minutes"
+      
+      - alert: SchedulerNotRunning
+        expr: abs(time() - graph_ingest_scheduler_last_run_timestamp) > 3600
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Knowledge Graph scheduler not running"
+          description: "The Knowledge Graph scheduler has not executed in more than 1 hour"

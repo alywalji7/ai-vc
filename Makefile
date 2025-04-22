@@ -1,4 +1,4 @@
-.PHONY: dev test format lint build clean observability help
+.PHONY: dev test format lint build clean observability seed_demo help
 
 # Default target
 help:
@@ -10,6 +10,7 @@ help:
         @echo "  make build        - Build Docker images"
         @echo "  make clean        - Remove Docker containers and volumes"
         @echo "  make observability - Start observability stack (Prometheus, Grafana, Jaeger)"
+        @echo "  make seed_demo    - Run the data seeding demo to populate the knowledge graph"
 
 # Start development environment
 dev:
@@ -42,3 +43,8 @@ clean:
 # Start observability stack
 observability:
         docker compose up -d prometheus alertmanager grafana jaeger
+
+# Run data seeding demo
+seed_demo:
+        @echo "Starting data seeding demo..."
+        @cd services/graph_ingest && python seed_demo.py

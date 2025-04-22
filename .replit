@@ -48,6 +48,14 @@ args = "Term Sheet Service"
 task = "workflow.run"
 args = "Telemetry Service"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Documentation Dev Server"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Documentation Server"
+
 [[workflows.workflow]]
 name = "Frontend Service"
 author = "agent"
@@ -183,6 +191,35 @@ task = "shell.exec"
 args = "cd services/telemetry && pip install -r requirements.txt && python run.py"
 waitForPort = 8100
 
+[[workflows.workflow]]
+name = "Documentation Dev Server"
+author = "agent"
+
+[workflows.workflow.metadata]
+agentRequireRestartOnSave = false
+
+[[workflows.workflow.tasks]]
+task = "packager.installForAll"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npx mdocs dev"
+waitForPort = 3001
+
+[[workflows.workflow]]
+name = "Documentation Server"
+author = "agent"
+
+[workflows.workflow.metadata]
+agentRequireRestartOnSave = false
+
+[[workflows.workflow.tasks]]
+task = "packager.installForAll"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "npx markserv docs"
+
 [deployment]
 run = ["sh", "-c", "cd services/frontend && npm install && npm run dev -- -p 5000"]
 
@@ -211,12 +248,20 @@ localPort = 8080
 externalPort = 8080
 
 [[ports]]
+localPort = 8081
+externalPort = 8081
+
+[[ports]]
 localPort = 8085
 externalPort = 3002
 
 [[ports]]
 localPort = 8090
 externalPort = 3003
+
+[[ports]]
+localPort = 8091
+externalPort = 8008
 
 [[ports]]
 localPort = 8095
@@ -229,3 +274,7 @@ externalPort = 6000
 [[ports]]
 localPort = 9090
 externalPort = 3000
+
+[[ports]]
+localPort = 35729
+externalPort = 6800

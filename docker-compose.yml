@@ -114,6 +114,29 @@ services:
       - "9411:9411"
     environment:
       - COLLECTOR_ZIPKIN_HOST_PORT=9411
+  
+  # Graph Ingest Service
+  graph_ingest:
+    build:
+      context: ./services/graph_ingest
+      dockerfile: Dockerfile
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/aivc
+      - PORT=8080
+      - METRICS_PORT=8091
+      - S3_ENDPOINT_URL=http://minio:9000
+      - S3_ACCESS_KEY=minioadmin
+      - S3_SECRET_KEY=minioadmin
+      - S3_BUCKET_NAME=aivc
+    depends_on:
+      - postgres
+      - minio
+    ports:
+      - "8080:8080"
+      - "8091:8091"
+    volumes:
+      - ./services/graph_ingest:/app
+    command: python main.py
 
 volumes:
   postgres_data:

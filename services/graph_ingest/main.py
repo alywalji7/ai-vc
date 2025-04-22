@@ -1,28 +1,65 @@
-import uvicorn
-import os
-from dotenv import load_dotenv
-from app.api import create_app
-from app.db import init_db
+"""
+Main module for the Graph Ingest Service.
 
-# Load environment variables from .env file if it exists
+This is the entry point for the Graph Ingest Service.
+"""
+
+import os
+import logging
+import threading
+import uvicorn
+from dotenv import load_dotenv
+from prometheus_client import start_http_server
+
+from app.db import init_db
+from app.api import api
+from app.scheduler import start_scheduler
+
+# Set up logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+)
+logger = logging.getLogger(__name__)
+
+# Load environment variables
 load_dotenv()
 
-# Initialize the database
-init_db()
-
-# Create the FastAPI application
-app = create_app()
-
-if __name__ == "__main__":
-    # Get host and port from environment or use defaults
-    host = os.environ.get("HOST", "0.0.0.0")
-    port = int(os.environ.get("PORT", "8080"))
+def main():
+    """
+    Main entry point for the Graph Ingest Service.
+    """
+    logger.info("Starting Graph Ingest Service")
     
-    # Start the server
+    # Initialize the database
+    try:
+        init_db()
+        logger.info("Database initialization complete")
+    except Exception as e:
+        logger.error(f"Error initializing database: {str(e)}")
+        return 1
+    
+    # Start the metrics server
+    metrics_port = int(os.environ.get("METRICS_PORT", 8091))
+    start_http_server(metrics_port)
+    logger.info(f"Metrics server started on port {metrics_port}")
+    
+    # Start the scheduler in a background thread
+    scheduler_thread = start_scheduler()
+    logger.info(f"Scheduler started in thread {scheduler_thread.name}")
+    
+    # Start the API server
+    port = int(os.environ.get("PORT", 8080))
+    logger.info(f"Starting API server on port {port}")
+    
     uvicorn.run(
-        "main:app",
-        host=host,
+        api,
+        host="0.0.0.0",
         port=port,
-        reload=True,
         log_level="info"
     )
+    
+    return 0
+
+if __name__ == "__main__":
+    main()

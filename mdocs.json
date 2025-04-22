@@ -39,6 +39,13 @@
             "docs/oncall.md",
             "docs/observability.md"
           ]
+        },
+        {
+          "group": "Infrastructure",
+          "pages": [
+            "docs/staging.md",
+            "docs/future_roadmap.md"
+          ]
         }
       ]
     }

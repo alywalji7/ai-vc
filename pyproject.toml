@@ -53,6 +53,9 @@ opentelemetry-instrumentation-sqlalchemy = "^0.53b1"
 opentelemetry-instrumentation-redis = "^0.53b1"
 opentelemetry-instrumentation-requests = "^0.53b1"
 opentelemetry-instrumentation-httpx = "^0.53b1"
+boto3 = "^1.37.38"
+thefuzz = "^0.22.1"
+python-levenshtein = "^0.27.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"

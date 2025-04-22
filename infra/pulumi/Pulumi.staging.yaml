@@ -1,0 +1,26 @@
+config:
+  aws:region: us-west-2
+  aivc-platform:environment: staging
+  aivc-platform:vpc_cidr: 10.0.0.0/16
+  aivc-platform:availability_zones:
+    - us-west-2a
+    - us-west-2b
+    - us-west-2c
+  aivc-platform:eks_node_instance_type: t3.medium
+  aivc-platform:eks_node_min_size: 2
+  aivc-platform:eks_node_max_size: 4
+  aivc-platform:eks_node_desired_capacity: 2
+  aivc-platform:rds_instance_class: db.t3.medium
+  aivc-platform:rds_allocated_storage: 20
+  aivc-platform:rds_engine_version: "16"
+  aivc-platform:rds_multi_az: true
+  aivc-platform:elasticache_node_type: cache.t3.medium
+  aivc-platform:elasticache_num_cache_nodes: 1
+  aivc-platform:s3_bucket_name: aivc-platform-staging
+  aivc-platform:grafana_admin_password:
+    secure: true
+  aivc-platform:db_master_username: postgres
+  aivc-platform:db_master_password:
+    secure: true
+  aivc-platform:db_name: aivc
+  aivc-platform:db_port: 5432

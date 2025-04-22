@@ -1,0 +1,6 @@
+name: aivc-platform
+runtime:
+  name: python
+  options:
+    virtualenv: venv
+description: AI.VC Platform Infrastructure

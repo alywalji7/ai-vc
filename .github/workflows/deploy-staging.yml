@@ -1,0 +1,264 @@
+name: Deploy to Staging
+
+# Required secrets for this workflow:
+# AWS_ACCESS_KEY_ID: AWS access key for deployment
+# AWS_SECRET_ACCESS_KEY: AWS secret key for deployment
+# PULUMI_ACCESS_TOKEN: Pulumi access token
+# SLACK_WEBHOOK_URL: Slack webhook URL for notifications
+# STAGING_DATABASE_URL: PostgreSQL connection string
+# STAGING_QDRANT_URL: Qdrant vector database URL
+# OPENAI_API_KEY: OpenAI API key for NLP capabilities
+# SENDGRID_API_KEY: SendGrid API key for email notifications
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+    inputs:
+      force_deploy:
+        description: 'Force deployment even if there are no changes'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+env:
+  AWS_REGION: us-west-2
+  PULUMI_STACK: staging
+  DOMAIN_NAME: staging.aivc-platform.com
+  ECR_REPOSITORY_URL: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          cd infra/pulumi
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+          
+      - name: Install Pulumi CLI
+        uses: pulumi/setup-pulumi@v2
+        
+      - name: Pulumi preview
+        run: |
+          cd infra/pulumi
+          pulumi stack select ${{ env.PULUMI_STACK }}
+          pulumi preview --non-interactive
+
+  deploy:
+    name: Deploy
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          cd infra/pulumi
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+          
+      - name: Get AWS Account ID
+        id: aws-account
+        run: echo "AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)" >> $GITHUB_ENV
+          
+      - name: Install Pulumi CLI
+        uses: pulumi/setup-pulumi@v2
+        
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+        
+      - name: Build and push Docker images
+        run: |
+          # Set up variables
+          REPOSITORY_URL=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+          TAG=latest
+          DATE=$(date +%Y%m%d%H%M%S)
+          
+          # Create ECR repositories if they don't exist
+          for service in frontend backend radar similarity_api graph_ingest ic_sim term_sheet telemetry scheduler; do
+            aws ecr describe-repositories --repository-names aivc-$service || aws ecr create-repository --repository-name aivc-$service
+          done
+          
+          # Build and push frontend
+          docker build -t $REPOSITORY_URL/aivc-frontend:$TAG -t $REPOSITORY_URL/aivc-frontend:$DATE -f infra/docker/frontend.Dockerfile .
+          docker push $REPOSITORY_URL/aivc-frontend:$TAG
+          docker push $REPOSITORY_URL/aivc-frontend:$DATE
+          
+          # Build and push backend
+          docker build -t $REPOSITORY_URL/aivc-backend:$TAG -t $REPOSITORY_URL/aivc-backend:$DATE -f infra/docker/backend.Dockerfile .
+          docker push $REPOSITORY_URL/aivc-backend:$TAG
+          docker push $REPOSITORY_URL/aivc-backend:$DATE
+          
+          # Build and push radar
+          docker build -t $REPOSITORY_URL/aivc-radar:$TAG -t $REPOSITORY_URL/aivc-radar:$DATE -f infra/docker/radar.Dockerfile .
+          docker push $REPOSITORY_URL/aivc-radar:$TAG
+          docker push $REPOSITORY_URL/aivc-radar:$DATE
+          
+          # Build and push similarity_api
+          docker build -t $REPOSITORY_URL/aivc-similarity-api:$TAG -t $REPOSITORY_URL/aivc-similarity-api:$DATE -f infra/docker/similarity_api.Dockerfile .
+          docker push $REPOSITORY_URL/aivc-similarity-api:$TAG
+          docker push $REPOSITORY_URL/aivc-similarity-api:$DATE
+          
+          # Build and push other services using the template
+          for service in graph_ingest ic_sim term_sheet telemetry scheduler; do
+            case $service in
+              graph_ingest) PORT=8080 ;;
+              ic_sim) PORT=8060 ;;
+              term_sheet) PORT=8070 ;;
+              telemetry) PORT=8100 ;;
+              scheduler) PORT=8085 ;;
+            esac
+            
+            docker build -t $REPOSITORY_URL/aivc-$service:$TAG -t $REPOSITORY_URL/aivc-$service:$DATE \
+              --build-arg SERVICE_NAME=$service --build-arg PORT=$PORT \
+              -f infra/docker/python_service.Dockerfile .
+            docker push $REPOSITORY_URL/aivc-$service:$TAG
+            docker push $REPOSITORY_URL/aivc-$service:$DATE
+          done
+      
+      - name: Pulumi up
+        run: |
+          cd infra/pulumi
+          pulumi stack select ${{ env.PULUMI_STACK }}
+          pulumi up --yes
+          
+      - name: Extract infrastructure outputs
+        id: pulumi-outputs
+        run: |
+          cd infra/pulumi
+          echo "EKS_CLUSTER_NAME=$(pulumi stack output eks_cluster_name)" >> $GITHUB_ENV
+          echo "RDS_ENDPOINT=$(pulumi stack output rds_endpoint)" >> $GITHUB_ENV
+          echo "REDIS_ENDPOINT=$(pulumi stack output redis_endpoint)" >> $GITHUB_ENV
+          echo "S3_BUCKET_NAME=$(pulumi stack output s3_bucket_name)" >> $GITHUB_ENV
+          echo "GRAFANA_ENDPOINT=$(pulumi stack output grafana_endpoint)" >> $GITHUB_ENV
+          
+      - name: Get ACM Certificate ARN
+        run: |
+          echo "ACM_CERTIFICATE_ARN=$(aws acm list-certificates --query "CertificateSummaryList[?DomainName=='*.${DOMAIN_NAME}'].CertificateArn | [0]" --output text)" >> $GITHUB_ENV
+      
+      - name: Prepare base64 encoded secrets
+        run: |
+          # For security, these secrets are stored in GitHub Secrets and base64 encoded for K8s
+          echo "DATABASE_URL_BASE64=$(echo -n ${{ secrets.STAGING_DATABASE_URL }} | base64 -w 0)" >> $GITHUB_ENV
+          echo "QDRANT_URL_BASE64=$(echo -n ${{ secrets.STAGING_QDRANT_URL }} | base64 -w 0)" >> $GITHUB_ENV
+          echo "OPENAI_API_KEY_BASE64=$(echo -n ${{ secrets.OPENAI_API_KEY }} | base64 -w 0)" >> $GITHUB_ENV
+          echo "SENDGRID_API_KEY_BASE64=$(echo -n ${{ secrets.SENDGRID_API_KEY }} | base64 -w 0)" >> $GITHUB_ENV
+          echo "SLACK_WEBHOOK_URL_BASE64=$(echo -n ${{ secrets.SLACK_WEBHOOK_URL }} | base64 -w 0)" >> $GITHUB_ENV
+          
+      - name: Configure kubectl
+        run: |
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER_NAME }}
+          
+      - name: Deploy Kubernetes manifests
+        run: |
+          cd infra/k8s
+          
+          # Replace environment variables in manifests
+          envsubst < configmaps.yaml > configmaps-filled.yaml
+          envsubst < secrets.yaml > secrets-filled.yaml
+          envsubst < deployments.yaml > deployments-filled.yaml
+          envsubst < ingress.yaml > ingress-filled.yaml
+          
+          # Apply manifests in order
+          kubectl apply -f namespaces.yaml
+          kubectl apply -f prometheus-rbac.yaml
+          kubectl apply -f configmaps-filled.yaml
+          kubectl apply -f secrets-filled.yaml
+          kubectl apply -f deployments-filled.yaml
+          kubectl apply -f services.yaml
+          kubectl apply -f ingress-filled.yaml
+          
+          # Wait for deployments to be ready
+          kubectl rollout status deployment/frontend -n aivc --timeout=300s
+          kubectl rollout status deployment/backend -n aivc --timeout=300s
+          
+      - name: Notify deployment status
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "text": "Staging deployment completed successfully!",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Staging deployment completed!*"
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Status:*\nSuccess"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Environment:*\nStaging"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Deployed by:*\n${{ github.actor }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Commit:*\n${{ github.sha }}"
+                    }
+                  ]
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Endpoints:*\n• Grafana: ${{ env.GRAFANA_ENDPOINT }}\n• RDS: ${{ env.RDS_ENDPOINT }}\n• Redis: ${{ env.REDIS_ENDPOINT }}"
+                  }
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Workflow:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View workflow run>"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK
