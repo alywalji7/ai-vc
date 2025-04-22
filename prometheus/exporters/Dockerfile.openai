@@ -1,0 +1,22 @@
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install dependencies
+RUN pip install --no-cache-dir openai prometheus-client python-dotenv
+
+# Copy exporter script
+COPY openai_usage_exporter.py .
+
+# Set environment variables
+ENV PORT=9102
+ENV REFRESH_INTERVAL=3600
+
+# Make the script executable
+RUN chmod +x openai_usage_exporter.py
+
+# Expose the metrics port
+EXPOSE 9102
+
+# Run the exporter
+CMD ["python", "openai_usage_exporter.py"]

@@ -2,22 +2,20 @@ FROM python:3.11-slim
 
 WORKDIR /app
 
-# Copy requirements and install
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install dependencies
+RUN pip install --no-cache-dir python-dotenv
 
-# Copy notifier script
+# Copy slack notifier script
 COPY slack_notifier.py .
 
-# Make script executable
+# Make the script executable
 RUN chmod +x slack_notifier.py
 
-# Create a non-root user to run the notifier
-RUN addgroup --system --gid 1001 alerting && \
-    adduser --system --uid 1001 --gid 1001 alerting
-USER alerting
+# Set environment variables
+ENV PORT=9093
 
+# Expose the webhook port
 EXPOSE 9093
 
-# Run the notifier
+# Run the slack notifier
 CMD ["python", "slack_notifier.py"]

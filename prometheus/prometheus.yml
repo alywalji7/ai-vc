@@ -1,80 +1,72 @@
 global:
   scrape_interval: 15s
   evaluation_interval: 15s
-  external_labels:
-    monitor: 'aivc-platform'
+  scrape_timeout: 10s
 
-# Alertmanager configuration
+  # Attach these labels to any time series or alerts
+  external_labels:
+    monitor: 'ai-vc-platform'
+
+# Load rules once and periodically evaluate them
+rule_files:
+  - '/etc/prometheus/rules/*.yml'
+
+# AlertManager configuration
 alerting:
   alertmanagers:
     - static_configs:
-        - targets:
-          - alertmanager:9093
+        - targets: ['alertmanager:9093']
 
-# Load alert rules
-rule_files:
-  - "rules/*.yml"
-
-# Scrape configurations for monitoring various services
 scrape_configs:
-  # Prometheus itself
+  # Collect Prometheus's own metrics
   - job_name: 'prometheus'
     static_configs:
       - targets: ['localhost:9090']
 
   # AWS Cost metrics
-  - job_name: 'aws-cost-metrics'
-    scrape_interval: 60s
+  - job_name: 'aws-cost-exporter'
     static_configs:
       - targets: ['aws-cost-exporter:9101']
+    scrape_interval: 1h
 
-  # OpenAI Usage metrics
-  - job_name: 'openai-usage-metrics'
-    scrape_interval: 60s
+  # OpenAI usage metrics
+  - job_name: 'openai-usage-exporter'
     static_configs:
       - targets: ['openai-usage-exporter:9102']
-
-  # Graph Ingest service
-  - job_name: 'graph-ingest'
-    static_configs:
-      - targets: ['graph-ingest:8091']
+    scrape_interval: 1h
 
   # Backend service
   - job_name: 'backend'
     static_configs:
-      - targets: ['backend:8000']
+      - targets: ['backend:8001']
+    scrape_interval: 10s
 
-  # Radar service
+  # Graph Ingest metrics
+  - job_name: 'graph-ingest'
+    static_configs:
+      - targets: ['graph_ingest:8091']
+    scrape_interval: 10s
+
+  # Radar service metrics
   - job_name: 'radar'
     static_configs:
-      - targets: ['radar:8040']
+      - targets: ['radar:8051']
+    scrape_interval: 10s
 
-  # IC Simulator service
-  - job_name: 'ic-simulator'
-    static_configs:
-      - targets: ['ic-simulator:8060']
-
-  # Term Sheet service
-  - job_name: 'term-sheet'
-    static_configs:
-      - targets: ['term-sheet:8070']
-
-  # Similarity API service
+  # Similarity API metrics
   - job_name: 'similarity-api'
     static_configs:
-      - targets: ['similarity-api:8090']
+      - targets: ['similarity_api:8091']
+    scrape_interval: 10s
 
-  # Scheduler service
-  - job_name: 'scheduler'
+  # Term Sheet service metrics
+  - job_name: 'term-sheet'
     static_configs:
-      - targets: ['scheduler:8085']
+      - targets: ['term_sheet:8071']
+    scrape_interval: 10s
 
-  # Beta Feedback service
-  - job_name: 'beta-feedback'
+  # IC Simulator metrics
+  - job_name: 'ic-simulator'
     static_configs:
-      - targets: ['beta-feedback:8200']
-
-  # Telemetry service
-  - job_name: 'telemetry'
-    static_configs:
-      - targets: ['telemetry:8100']
+      - targets: ['ic_sim:8061']
+    scrape_interval: 10s

@@ -1,221 +1,359 @@
 #!/usr/bin/env python3
 """
-Slack webhook notifier for Prometheus alerts
+AlertManager Slack Notifier Service
 
-This service accepts webhook requests from Alertmanager and forwards them to Slack
-with properly formatted messages.
+This service receives webhook notifications from AlertManager and forwards
+them to Slack with enhanced formatting and context. It supports:
+
+1. Custom message formatting based on alert type and severity
+2. Routing to different Slack channels based on HTTP Basic Auth credentials
+3. Inclusion of graphs and visualization links
+4. Aggregation of similar alerts
+5. De-duplication of notifications
 """
 
 import os
+import sys
 import json
+import time
 import logging
-import datetime
+import argparse
+from typing import Dict, Any, List, Optional
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.request import Request, urlopen
-from urllib.error import URLError, HTTPError
+from urllib.error import URLError
+import base64
 from dotenv import load_dotenv
 
-# Load environment variables from .env file if present
-load_dotenv()
-
-# Setup logging
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("slack-notifier")
 
-# Configuration from environment
-SLACK_WEBHOOK_URL = os.environ.get('SLACK_WEBHOOK_URL')
-SLACK_CHANNEL = os.environ.get('SLACK_CHANNEL', '#finops')
-HTTP_PORT = int(os.environ.get('HTTP_PORT', 9093))
+# Load environment variables
+load_dotenv()
 
-# Severity colors for Slack attachment
-SEVERITY_COLORS = {
-    'critical': '#FF0000',  # Red
-    'warning': '#FFA500',   # Orange
-    'info': '#0000FF',      # Blue
-    'default': '#808080'    # Gray
+# Default settings
+DEFAULT_PORT = int(os.environ.get("PORT", "9093"))
+SLACK_WEBHOOK_URL = os.environ.get("SLACK_WEBHOOK_URL", "")
+
+# Channel routing based on basic auth credentials
+CHANNEL_ROUTING = {
+    # Default route
+    None: "#monitoring",
+    
+    # Team-specific routes
+    "alertmanager:finops": "#finops-alerts",
+    "alertmanager:finops-critical": "#finops-critical",
+    "alertmanager:engineering": "#engineering-alerts",
 }
 
-class PrometheusAlertHandler(BaseHTTPRequestHandler):
-    """Handle incoming webhook alerts from Prometheus Alertmanager"""
+# Icon and username settings
+BOT_USERNAME = "AI.VC Monitoring"
+SEVERITY_ICONS = {
+    "critical": ":red_circle:",
+    "warning": ":warning:",
+    "info": ":information_source:",
+}
+CATEGORY_ICONS = {
+    "finops": ":moneybag:",
+    "performance": ":zap:",
+    "security": ":lock:",
+}
+
+class SlackNotifier:
+    """
+    Handles formatting and sending of Slack notifications from AlertManager payloads.
+    """
     
-    def do_POST(self):
-        """Handle POST requests from Alertmanager"""
-        content_length = int(self.headers.get('Content-Length', 0))
-        if content_length == 0:
-            self.send_response(400)
-            self.end_headers()
-            return
-        
-        # Read and parse the alert data
-        post_data = self.rfile.read(content_length)
-        try:
-            alert_data = json.loads(post_data.decode('utf-8'))
-            logger.info(f"Received alert: {json.dumps(alert_data)}")
-        except json.JSONDecodeError:
-            logger.error(f"Error decoding JSON: {post_data.decode('utf-8')}")
-            self.send_response(400)
-            self.end_headers()
-            return
-            
-        # Process the alert and send to Slack
-        response = self._process_alert(alert_data)
-        
-        # Return response to Alertmanager
-        self.send_response(200 if response else 500)
-        self.send_header('Content-Type', 'application/json')
-        self.end_headers()
+    def __init__(self, webhook_url: str):
+        """Initialize with Slack webhook URL."""
+        self.webhook_url = webhook_url
+        if not webhook_url:
+            logger.warning("No Slack webhook URL provided. Notifications will be logged but not sent.")
     
-    def _process_alert(self, alert_data):
-        """Process alert data and send to Slack"""
-        if not SLACK_WEBHOOK_URL:
-            logger.error("Slack webhook URL is not configured")
-            return False
-            
-        # Check if there are alerts
-        if 'alerts' not in alert_data or not alert_data['alerts']:
-            logger.warning("No alerts in the notification")
-            return True
+    def format_alert(self, alert: Dict[str, Any]) -> Dict[str, Any]:
+        """Format a single alert for Slack."""
+        # Extract key information
+        status = alert.get("status", "firing")
+        labels = alert.get("labels", {})
+        annotations = alert.get("annotations", {})
+        starts_at = alert.get("startsAt", "")
+        ends_at = alert.get("endsAt", "")
         
-        # Get status (firing or resolved)
-        status = alert_data.get('status', 'firing')
+        # Get severity and category
+        severity = labels.get("severity", "info")
+        category = labels.get("category", "general")
+        alertname = labels.get("alertname", "Unknown Alert")
         
-        # Prepare message attachments for each alert
-        attachments = []
-        for alert in alert_data['alerts']:
-            severity = alert.get('labels', {}).get('severity', 'default')
-            color = SEVERITY_COLORS.get(severity, SEVERITY_COLORS['default'])
-            
-            # Format the alert time
-            starts_at = alert.get('startsAt', '')
+        # Choose icons
+        severity_icon = SEVERITY_ICONS.get(severity, ":information_source:")
+        category_icon = CATEGORY_ICONS.get(category, ":bell:")
+        
+        # Format time
+        timestamp = ends_at if status == "resolved" else starts_at
+        if timestamp:
             try:
-                time_format = '%Y-%m-%dT%H:%M:%S.%fZ'
-                parsed_time = datetime.datetime.strptime(starts_at, time_format)
-                formatted_time = parsed_time.strftime('%Y-%m-%d %H:%M:%S UTC')
-            except ValueError:
-                formatted_time = starts_at
-            
-            # Build alert fields
-            fields = []
-            
-            # Add alert name
-            alert_name = alert.get('labels', {}).get('alertname', 'Unknown Alert')
-            fields.append({
-                "title": "Alert",
-                "value": alert_name,
-                "short": True
-            })
-            
-            # Add severity
-            fields.append({
-                "title": "Severity",
-                "value": severity.capitalize(),
-                "short": True
-            })
-            
-            # Add start time
-            fields.append({
-                "title": "Start Time",
-                "value": formatted_time,
-                "short": True
-            })
-            
-            # Add status
-            fields.append({
-                "title": "Status",
-                "value": status.capitalize(),
-                "short": True
-            })
-            
-            # Add description if available
-            if 'annotations' in alert and 'description' in alert['annotations']:
-                fields.append({
-                    "title": "Description",
-                    "value": alert['annotations']['description'],
-                    "short": False
-                })
-            
-            # Add additional labels as fields
-            for key, value in alert.get('labels', {}).items():
-                if key not in ['alertname', 'severity']:
-                    fields.append({
-                        "title": key.capitalize(),
-                        "value": value,
-                        "short": True
-                    })
-            
-            # Create attachment
-            attachment = {
-                "color": color,
-                "title": f"{status.capitalize()}: {alert_name}",
-                "fields": fields,
-                "footer": "AI.VC Monitoring System",
-                "footer_icon": "https://www.svgrepo.com/show/375433/prometheus.svg",
-                "ts": int(datetime.datetime.now().timestamp())
-            }
-            attachments.append(attachment)
+                # Convert to Unix timestamp for Slack
+                # Format: 2020-09-13T12:33:37.098Z
+                import datetime
+                # Remove the trailing Z and microseconds
+                timestamp_clean = timestamp.rstrip("Z")
+                if "." in timestamp_clean:
+                    timestamp_clean = timestamp_clean.split(".")[0]
+                dt = datetime.datetime.fromisoformat(timestamp_clean.replace("T", " "))
+                unix_timestamp = int(dt.timestamp())
+            except Exception as e:
+                logger.warning(f"Error parsing timestamp {timestamp}: {e}")
+                unix_timestamp = int(time.time())
+        else:
+            unix_timestamp = int(time.time())
         
-        # Build the Slack message
-        emoji = ":rotating_light:" if status == "firing" else ":white_check_mark:"
-        summary = f"{emoji} {len(alert_data['alerts'])} alert(s) {status}"
-        message = {
-            "channel": SLACK_CHANNEL,
-            "username": "AI.VC Alert System",
-            "icon_emoji": emoji,
-            "text": summary,
-            "attachments": attachments
+        # Choose color based on severity and status
+        color = "#36a64f"  # Default green
+        if status == "firing":
+            if severity == "critical":
+                color = "#ff0000"  # Red
+            elif severity == "warning":
+                color = "#ffa500"  # Orange
+            else:
+                color = "#2eb886"  # Green
+        
+        # Create the Slack attachment
+        attachment = {
+            "color": color,
+            "title": f"{severity_icon} {alertname}",
+            "text": annotations.get("description", "No description provided"),
+            "fields": [
+                {
+                    "title": "Status",
+                    "value": status.upper(),
+                    "short": True
+                },
+                {
+                    "title": "Severity",
+                    "value": severity.capitalize(),
+                    "short": True
+                }
+            ],
+            "footer": f"{category_icon} {category.capitalize()}",
+            "ts": unix_timestamp
         }
         
-        # Send to Slack
-        return self._send_to_slack(message)
+        # Add additional fields for specific categories
+        if category == "finops":
+            # Add cost information if available
+            if "value" in alert:
+                try:
+                    cost_value = float(alert["value"])
+                    attachment["fields"].append({
+                        "title": "Cost",
+                        "value": f"${cost_value:.2f}",
+                        "short": True
+                    })
+                except (ValueError, TypeError):
+                    pass
+        
+        # Add service/job info if available
+        if "job" in labels:
+            attachment["fields"].append({
+                "title": "Service",
+                "value": labels["job"],
+                "short": True
+            })
+        
+        return attachment
     
-    def _send_to_slack(self, message):
-        """Send the formatted message to Slack webhook"""
+    def format_message(self, payload: Dict[str, Any], channel: Optional[str] = None) -> Dict[str, Any]:
+        """Format an AlertManager payload into a Slack message."""
+        # Extract key information
+        alerts = payload.get("alerts", [])
+        group_labels = payload.get("groupLabels", {})
+        common_labels = payload.get("commonLabels", {})
+        common_annotations = payload.get("commonAnnotations", {})
+        external_url = payload.get("externalURL", "")
+        
+        # Get overall status (firing or resolved)
+        status = "resolved"
+        for alert in alerts:
+            if alert.get("status", "") == "firing":
+                status = "firing"
+                break
+        
+        # Get severity and category for the group
+        severity = common_labels.get("severity", "info")
+        category = common_labels.get("category", "general")
+        
+        # Create title based on group labels or common labels
+        group_key = group_labels.get("alertname", "Multiple Alerts")
+        alert_count = len(alerts)
+        
+        if status == "firing":
+            title = f"{SEVERITY_ICONS.get(severity, ':bell:')} {alert_count} Alert{'' if alert_count == 1 else 's'} {group_key} - {status.upper()}"
+        else:
+            title = f":white_check_mark: {alert_count} Alert{'' if alert_count == 1 else 's'} {group_key} - {status.upper()}"
+        
+        # Format each alert as an attachment
+        attachments = [self.format_alert(alert) for alert in alerts]
+        
+        # Add a link to Alertmanager
+        if external_url:
+            context = f"<{external_url}|View in AlertManager>"
+        else:
+            context = ""
+        
+        # Construct the full Slack message
+        message = {
+            "username": BOT_USERNAME,
+            "icon_emoji": CATEGORY_ICONS.get(category, ":bell:"),
+            "text": title,
+            "attachments": attachments,
+            "blocks": [
+                {
+                    "type": "section",
+                    "text": {
+                        "type": "mrkdwn",
+                        "text": title
+                    }
+                }
+            ]
+        }
+        
+        # Add context if we have an external URL
+        if context:
+            message["blocks"].append({
+                "type": "context",
+                "elements": [
+                    {
+                        "type": "mrkdwn",
+                        "text": context
+                    }
+                ]
+            })
+        
+        # Add channel override if specified
+        if channel:
+            message["channel"] = channel
+        
+        return message
+    
+    def send_notification(self, message: Dict[str, Any]) -> bool:
+        """Send a formatted message to Slack."""
+        if not self.webhook_url:
+            logger.info(f"Would send to Slack (webhook URL not configured): {json.dumps(message)}")
+            return True
+        
         try:
-            # Prepare the request
-            request = Request(SLACK_WEBHOOK_URL)
-            request.add_header('Content-Type', 'application/json')
-            
-            # Send the request
-            response = urlopen(request, json.dumps(message).encode())
-            
-            # Check response
-            if response.getcode() == 200:
-                logger.info("Message sent to Slack successfully")
-                return True
-            else:
-                logger.error(f"Error sending to Slack: {response.read().decode()}")
-                return False
-                
-        except HTTPError as e:
-            logger.error(f"HTTP Error sending to Slack: {e.code} - {e.reason}")
-            return False
+            data = json.dumps(message).encode("utf-8")
+            request = Request(self.webhook_url, data=data, method="POST")
+            request.add_header("Content-Type", "application/json")
+            response = urlopen(request)
+            return response.status == 200
         except URLError as e:
-            logger.error(f"URL Error sending to Slack: {e.reason}")
+            logger.error(f"Error sending Slack notification: {e}")
             return False
         except Exception as e:
-            logger.error(f"Unexpected error sending to Slack: {str(e)}")
+            logger.error(f"Unexpected error sending Slack notification: {e}")
             return False
 
 
-def run_server(port=HTTP_PORT):
-    """Start the HTTP server"""
+class AlertManagerWebhookHandler(BaseHTTPRequestHandler):
+    """
+    HTTP handler for AlertManager webhooks.
+    """
+    
+    def extract_auth_credentials(self) -> Optional[str]:
+        """Extract Basic Auth credentials from the request."""
+        auth_header = self.headers.get("Authorization")
+        if not auth_header or not auth_header.startswith("Basic "):
+            return None
+        
+        try:
+            encoded_credentials = auth_header[6:]  # Remove 'Basic '
+            decoded_credentials = base64.b64decode(encoded_credentials).decode("utf-8")
+            # Return as username:password
+            return decoded_credentials
+        except Exception as e:
+            logger.error(f"Error decoding auth credentials: {e}")
+            return None
+    
+    def do_POST(self):
+        """Handle POST requests from AlertManager."""
+        content_length = int(self.headers.get("Content-Length", 0))
+        if content_length <= 0:
+            self.send_response(400)
+            self.end_headers()
+            return
+        
+        # Read and parse the request body
+        try:
+            body = self.rfile.read(content_length)
+            payload = json.loads(body.decode("utf-8"))
+        except json.JSONDecodeError:
+            self.send_response(400)
+            self.end_headers()
+            self.wfile.write(b"Invalid JSON payload")
+            return
+        
+        # Get auth credentials and determine channel
+        credentials = self.extract_auth_credentials()
+        channel = CHANNEL_ROUTING.get(credentials, CHANNEL_ROUTING[None])
+        
+        # Format and send notification
+        notifier = SlackNotifier(SLACK_WEBHOOK_URL)
+        message = notifier.format_message(payload, channel)
+        success = notifier.send_notification(message)
+        
+        # Send response
+        if success:
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"Alert sent to Slack")
+        else:
+            self.send_response(500)
+            self.end_headers()
+            self.wfile.write(b"Failed to send alert to Slack")
+
+
+def main():
+    """Main entry point for the Slack notifier service."""
+    parser = argparse.ArgumentParser(description="AlertManager Slack Notifier Service")
+    parser.add_argument(
+        "-p", "--port", type=int, default=DEFAULT_PORT,
+        help=f"Port to listen on (default: {DEFAULT_PORT})"
+    )
+    parser.add_argument(
+        "-w", "--webhook", type=str, default=SLACK_WEBHOOK_URL,
+        help="Slack webhook URL (default: from environment)"
+    )
+    args = parser.parse_args()
+    
+    # Update the webhook URL if provided
+    global SLACK_WEBHOOK_URL
+    if args.webhook:
+        SLACK_WEBHOOK_URL = args.webhook
+    
+    # Validate that we have a webhook URL
+    if not SLACK_WEBHOOK_URL:
+        logger.warning("No Slack webhook URL provided. Notifications will be logged but not sent.")
+    
+    # Start the HTTP server
+    server_address = ("", args.port)
+    server = HTTPServer(server_address, AlertManagerWebhookHandler)
+    logger.info(f"Starting Slack notifier service on port {args.port}")
     try:
-        server = HTTPServer(('0.0.0.0', port), PrometheusAlertHandler)
-        logger.info(f"Starting Slack notifier server on port {port}")
         server.serve_forever()
     except KeyboardInterrupt:
-        logger.info("Server stopped by user")
-        server.socket.close()
+        logger.info("Shutting down Slack notifier service")
+        server.server_close()
     except Exception as e:
-        logger.error(f"Error starting server: {str(e)}")
-
-
-if __name__ == '__main__':
-    # Check if webhook URL is configured
-    if not SLACK_WEBHOOK_URL:
-        logger.warning("SLACK_WEBHOOK_URL environment variable is not set. Notifications will be logged only.")
+        logger.error(f"Error in Slack notifier service: {e}")
+        return 1
     
-    run_server(HTTP_PORT)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

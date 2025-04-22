@@ -1,32 +1,128 @@
 global:
   resolve_timeout: 5m
+  http_config:
+    follow_redirects: true
+    enable_http2: true
 
+# The root route on which each incoming alert enters.
 route:
-  group_by: ['alertname', 'category', 'severity']
+  # The root route must not have any matchers as it is the entry point for
+  # all alerts. It needs to have a receiver configured so alerts that do not
+  # match any of the sub-routes are sent to someone.
+  receiver: 'slack-default'
+
+  # The labels by which incoming alerts are grouped together. For example,
+  # multiple alerts coming in for cluster=A and alertname=LatencyHigh would
+  # be batched into a single group.
+  group_by: ['alertname', 'cluster', 'service']
+
+  # When a new group of alerts is created by an incoming alert, wait at
+  # least 'group_wait' to send the initial notification.
+  # This way ensures that you get multiple alerts for the same group that start
+  # firing shortly after another are batched together on the first
+  # notification.
   group_wait: 30s
+
+  # When the first notification was sent, wait 'group_interval' to send a batch
+  # of new alerts that started firing for that group.
   group_interval: 5m
-  repeat_interval: 4h
-  receiver: 'slack-notifications'
+
+  # If an alert has successfully been sent, wait 'repeat_interval' to
+  # resend them.
+  repeat_interval: 12h
+
+  # All the above attributes are inherited by all child routes and can
+  # be overwritten on each.
+
+  # The child route trees.
   routes:
-    - match:
-        severity: critical
+  - receiver: 'slack-critical'
+    matchers:
+      - severity="critical"
+    continue: true
+    
+  # Financial operations alerts go to FinOps team
+  - receiver: 'slack-finops'
+    matchers:
+      - category="finops"
+    continue: true
+    routes:
+    - receiver: 'slack-finops-urgent'
+      matchers:
+        - severity="critical"
       group_wait: 10s
       repeat_interval: 1h
-      receiver: 'slack-notifications'
-    - match:
-        category: finops
-      group_by: ['alertname', 'category']
-      receiver: 'slack-notifications'
 
-receivers:
-  - name: 'slack-notifications'
-    webhook_configs:
-      - url: 'http://slack-notifier:9093/'
-        send_resolved: true
+  # Performance and scaling alerts go to Engineering
+  - receiver: 'slack-engineering'
+    matchers:
+      - category="performance"
+    continue: true
+
+  # Security alerts get high priority
+  - receiver: 'slack-security'
+    matchers:
+      - category="security"
+    group_wait: 10s
+    repeat_interval: 1h
+    continue: true
 
 inhibit_rules:
-  - source_match:
-      severity: 'critical'
-    target_match:
-      severity: 'warning'
-    equal: ['alertname']
+  # Inhibit alerts if the same alert with higher severity exists
+  - source_matchers:
+      - severity="critical"
+    target_matchers:
+      - severity="warning"
+    # Apply inhibition if the alertname is the same
+    equal: ['alertname', 'cluster', 'service']
+
+receivers:
+- name: 'slack-default'
+  webhook_configs:
+  - url: 'http://slack-notifier:9093/webhook'
+    send_resolved: true
+
+- name: 'slack-critical'
+  webhook_configs:
+  - url: 'http://slack-notifier:9093/webhook'
+    send_resolved: true
+    http_config:
+      basic_auth:
+        username: 'alertmanager'
+        password: 'finops-critical'
+
+- name: 'slack-finops'
+  webhook_configs:
+  - url: 'http://slack-notifier:9093/webhook'
+    send_resolved: true
+    http_config:
+      basic_auth:
+        username: 'alertmanager'
+        password: 'finops'
+
+- name: 'slack-finops-urgent'
+  webhook_configs:
+  - url: 'http://slack-notifier:9093/webhook'
+    send_resolved: true
+    http_config:
+      basic_auth:
+        username: 'alertmanager'
+        password: 'finops-critical'
+
+- name: 'slack-engineering'
+  webhook_configs:
+  - url: 'http://slack-notifier:9093/webhook'
+    send_resolved: true
+    http_config:
+      basic_auth:
+        username: 'alertmanager'
+        password: 'engineering'
+
+- name: 'slack-security'
+  webhook_configs:
+  - url: 'http://slack-notifier:9093/webhook'
+    send_resolved: true
+    http_config:
+      basic_auth:
+        username: 'alertmanager'
+        password: 'security'

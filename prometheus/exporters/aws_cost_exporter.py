@@ -2,291 +2,452 @@
 """
 AWS Cost Exporter for Prometheus
 
-This script collects AWS cost data using the AWS Cost Explorer API and exports
-metrics in Prometheus format using a simple HTTP server.
+This script exports AWS cost metrics to Prometheus, including:
+- Monthly cost estimates
+- Daily costs
+- Service-specific costs
+- Cost by resource tags
 
-Metrics exported:
-- aws_cost_current_usd: Current month's AWS costs by service
-- aws_cost_forecast_usd: Forecasted AWS costs for the current month
-- aws_budget_percent: Percentage of monthly budget used/forecasted
-- aws_cost_daily_usd: Daily AWS costs for the current month
-
-Environment variables:
-- AWS_ACCESS_KEY_ID: AWS access key with Cost Explorer permissions
-- AWS_SECRET_ACCESS_KEY: AWS secret key
-- AWS_REGION: AWS region (default: us-east-1)
-- PROMETHEUS_PORT: Port to expose metrics on (default: 9101)
-- METRICS_INTERVAL_SECONDS: How often to refresh metrics (default: 3600)
-- AWS_BUDGET_LIMIT_USD: Monthly budget limit in USD (default: 1000)
+The exporter uses AWS Cost Explorer API to retrieve cost data and
+caches results to minimize API calls (which are rate limited and incur costs).
 """
 
 import os
+import sys
 import time
+import json
 import logging
-import datetime
-from typing import Dict, List, Any, Optional, Tuple
+import argparse
+from datetime import datetime, timedelta, timezone
+from functools import lru_cache
+from typing import Dict, Any, List, Optional, Tuple
+import threading
+import signal
+from http.server import HTTPServer, BaseHTTPRequestHandler
 
+# AWS SDK
 import boto3
-from botocore.exceptions import ClientError
-from prometheus_client import start_http_server, Gauge
+from botocore.exceptions import ClientError, NoCredentialsError
 
-# Setup logging
+# Prometheus client
+from prometheus_client import REGISTRY, Gauge, Counter, generate_latest
+from prometheus_client.core import GaugeMetricFamily, CounterMetricFamily, REGISTRY
+
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("aws-cost-exporter")
 
-# Environment variables
-AWS_REGION = os.environ.get('AWS_REGION', 'us-east-1')
-PROMETHEUS_PORT = int(os.environ.get('PROMETHEUS_PORT', 9101))
-METRICS_INTERVAL_SECONDS = int(os.environ.get('METRICS_INTERVAL_SECONDS', 3600))
-AWS_BUDGET_LIMIT_USD = float(os.environ.get('AWS_BUDGET_LIMIT_USD', 1000))
+# Default settings
+DEFAULT_PORT = int(os.environ.get("PORT", "9101"))
+DEFAULT_REFRESH_INTERVAL = int(os.environ.get("REFRESH_INTERVAL", "3600"))  # 1 hour
+AWS_REGION = os.environ.get("AWS_REGION", "us-east-1")
 
-# Prometheus metrics
-aws_cost_current = Gauge('aws_cost_current_usd', 'Current AWS costs in USD', ['service'])
-aws_cost_forecast = Gauge('aws_cost_forecast_usd', 'Forecasted AWS costs in USD for the current month')
-aws_budget_percent = Gauge('aws_budget_percent', 'Percentage of monthly budget used/forecasted')
-aws_cost_daily = Gauge('aws_cost_daily_usd', 'Daily AWS costs in USD', ['date'])
+# Environment variables for AWS credentials (optional, will use boto3 credential chain)
+AWS_ACCESS_KEY = os.environ.get("AWS_ACCESS_KEY_ID", "")
+AWS_SECRET_KEY = os.environ.get("AWS_SECRET_ACCESS_KEY", "")
 
-# Global variable to cache the last successful API results
-last_successful_results = {
-    'current_costs': {},
-    'forecast': 0.0,
-    'daily_costs': {},
-    'last_update': None
-}
+# Define metrics
+MONTHLY_COST = Gauge(
+    "aws_monthly_cost_estimate", 
+    "Estimated AWS costs for the current month in USD"
+)
+DAILY_COST = Gauge(
+    "aws_daily_cost", 
+    "AWS costs for the previous day in USD"
+)
+SERVICE_COST = Gauge(
+    "aws_service_cost", 
+    "AWS costs by service in USD",
+    ["service"]
+)
+COST_BY_TAG = Gauge(
+    "aws_cost_by_tag", 
+    "AWS costs by resource tag in USD",
+    ["key", "value"]
+)
+QUERY_COUNT = Counter(
+    "aws_cost_exporter_api_queries_total", 
+    "Total number of AWS Cost Explorer API queries"
+)
+QUERY_ERRORS = Counter(
+    "aws_cost_exporter_api_errors_total", 
+    "Total number of AWS Cost Explorer API errors"
+)
+LAST_REFRESH = Gauge(
+    "aws_cost_exporter_last_refresh_timestamp",
+    "Timestamp of the last successful data refresh"
+)
 
 
-def get_aws_cost_explorer_client() -> Any:
-    """Create and return an AWS Cost Explorer client."""
-    try:
-        return boto3.client('ce', region_name=AWS_REGION)
-    except Exception as e:
-        logger.error(f"Failed to create AWS Cost Explorer client: {str(e)}")
-        return None
-
-
-def get_month_date_range() -> Tuple[str, str]:
-    """Get the date range for the current month in YYYY-MM-DD format."""
-    today = datetime.datetime.now()
-    start_of_month = today.replace(day=1).strftime('%Y-%m-%d')
-    today_str = today.strftime('%Y-%m-%d')
-    return start_of_month, today_str
-
-
-def get_current_costs() -> Dict[str, float]:
+class AWSCostCollector:
     """
-    Get the current month's AWS costs by service.
-    
-    Returns:
-        Dict mapping service names to costs in USD
+    Collects AWS cost data from Cost Explorer API.
+    Implements caching to minimize API calls.
     """
-    client = get_aws_cost_explorer_client()
-    if not client:
-        logger.warning("Using cached costs due to client initialization failure.")
-        return last_successful_results['current_costs']
     
-    try:
-        start_date, end_date = get_month_date_range()
-        
-        response = client.get_cost_and_usage(
-            TimePeriod={
-                'Start': start_date,
-                'End': end_date
-            },
-            Granularity='MONTHLY',
-            Metrics=['UnblendedCost'],
-            GroupBy=[
-                {
-                    'Type': 'DIMENSION',
-                    'Key': 'SERVICE'
-                }
-            ]
-        )
-        
-        result = {}
-        
-        # Process the response
-        for group in response['ResultsByTime'][0]['Groups']:
-            service = group['Keys'][0]
-            cost = float(group['Metrics']['UnblendedCost']['Amount'])
-            result[service] = cost
-        
-        return result
+    def __init__(self, region: str = AWS_REGION):
+        """Initialize with AWS region and credentials."""
+        self.region = region
+        self.client = self._create_cost_explorer_client()
     
-    except ClientError as e:
-        logger.error(f"AWS API error: {str(e)}")
-        return last_successful_results['current_costs']
+    def _create_cost_explorer_client(self):
+        """Create an AWS Cost Explorer client."""
+        try:
+            if AWS_ACCESS_KEY and AWS_SECRET_KEY:
+                return boto3.client(
+                    "ce", 
+                    region_name=self.region,
+                    aws_access_key_id=AWS_ACCESS_KEY,
+                    aws_secret_access_key=AWS_SECRET_KEY
+                )
+            else:
+                return boto3.client("ce", region_name=self.region)
+        except Exception as e:
+            logger.error(f"Error creating AWS Cost Explorer client: {e}")
+            return None
     
-    except Exception as e:
-        logger.error(f"Error getting current costs: {str(e)}")
-        return last_successful_results['current_costs']
-
-
-def get_cost_forecast() -> float:
-    """
-    Get the forecasted AWS costs for the current month.
-    
-    Returns:
-        Forecasted costs in USD
-    """
-    client = get_aws_cost_explorer_client()
-    if not client:
-        logger.warning("Using cached forecast due to client initialization failure.")
-        return last_successful_results['forecast']
-    
-    try:
-        start_date, _ = get_month_date_range()
+    @lru_cache(maxsize=1)
+    def get_month_to_date_cost(self) -> Optional[float]:
+        """
+        Get the month-to-date cost from AWS Cost Explorer.
+        Results are cached to minimize API calls.
+        """
+        if not self.client:
+            logger.error("No Cost Explorer client available")
+            return None
         
-        # Calculate end of month
-        start_date_dt = datetime.datetime.strptime(start_date, '%Y-%m-%d')
-        if start_date_dt.month == 12:
-            next_month = datetime.datetime(start_date_dt.year + 1, 1, 1)
-        else:
-            next_month = datetime.datetime(start_date_dt.year, start_date_dt.month + 1, 1)
+        # Calculate date range (start of month to today)
+        today = datetime.now(timezone.utc)
+        start_date = today.replace(day=1).strftime("%Y-%m-%d")
+        end_date = (today + timedelta(days=1)).strftime("%Y-%m-%d")
         
-        end_date = (next_month - datetime.timedelta(days=1)).strftime('%Y-%m-%d')
-        
-        response = client.get_cost_forecast(
-            TimePeriod={
-                'Start': datetime.datetime.now().strftime('%Y-%m-%d'),
-                'End': end_date
-            },
-            Metric='UNBLENDED_COST',
-            Granularity='MONTHLY'
-        )
-        
-        # Get the forecasted amount
-        forecast = float(response['Total']['Amount'])
-        
-        return forecast
-    
-    except ClientError as e:
-        logger.error(f"AWS API error: {str(e)}")
-        return last_successful_results['forecast']
-    
-    except Exception as e:
-        logger.error(f"Error getting cost forecast: {str(e)}")
-        return last_successful_results['forecast']
-
-
-def get_daily_costs() -> Dict[str, float]:
-    """
-    Get the daily AWS costs for the current month.
-    
-    Returns:
-        Dict mapping date strings to costs in USD
-    """
-    client = get_aws_cost_explorer_client()
-    if not client:
-        logger.warning("Using cached daily costs due to client initialization failure.")
-        return last_successful_results['daily_costs']
-    
-    try:
-        start_date, end_date = get_month_date_range()
-        
-        response = client.get_cost_and_usage(
-            TimePeriod={
-                'Start': start_date,
-                'End': end_date
-            },
-            Granularity='DAILY',
-            Metrics=['UnblendedCost']
-        )
-        
-        result = {}
-        
-        # Process the response
-        for day in response['ResultsByTime']:
-            date = day['TimePeriod']['Start']
-            cost = float(day['Total']['UnblendedCost']['Amount'])
-            result[date] = cost
-        
-        return result
-    
-    except ClientError as e:
-        logger.error(f"AWS API error: {str(e)}")
-        return last_successful_results['daily_costs']
-    
-    except Exception as e:
-        logger.error(f"Error getting daily costs: {str(e)}")
-        return last_successful_results['daily_costs']
-
-
-def update_prometheus_metrics() -> None:
-    """Update Prometheus metrics with the latest AWS cost data."""
-    try:
-        # Get the current costs by service
-        current_costs = get_current_costs()
-        
-        # Clear existing metrics
-        aws_cost_current._metrics.clear()
-        
-        # Update metrics for current costs
-        total_current_cost = 0.0
-        for service, cost in current_costs.items():
-            aws_cost_current.labels(service=service).set(cost)
-            total_current_cost += cost
-        
-        # Get the forecasted costs
-        forecast = get_cost_forecast()
-        
-        # Set the forecast metric
-        aws_cost_forecast.set(forecast)
-        
-        # Calculate and set the budget percentage
-        forecasted_percentage = (forecast / AWS_BUDGET_LIMIT_USD) * 100
-        aws_budget_percent.set(min(forecasted_percentage, 100.0))
-        
-        # Get the daily costs
-        daily_costs = get_daily_costs()
-        
-        # Clear existing daily metrics
-        aws_cost_daily._metrics.clear()
-        
-        # Update metrics for daily costs
-        for date, cost in daily_costs.items():
-            aws_cost_daily.labels(date=date).set(cost)
-        
-        # Cache the successful results
-        global last_successful_results
-        last_successful_results = {
-            'current_costs': current_costs,
-            'forecast': forecast,
-            'daily_costs': daily_costs,
-            'last_update': datetime.datetime.now()
-        }
-        
-        logger.info(f"Updated AWS cost metrics - Current: ${total_current_cost:.2f}, "
-                    f"Forecast: ${forecast:.2f}, Budget %: {forecasted_percentage:.1f}%")
-        
-    except Exception as e:
-        logger.error(f"Error updating metrics: {str(e)}")
-
-
-def main() -> None:
-    """Main function to start the HTTP server and update metrics periodically."""
-    try:
-        # Start up the server to expose the metrics
-        start_http_server(PROMETHEUS_PORT)
-        logger.info(f"Metrics server started on port {PROMETHEUS_PORT}")
-        
-        # Initial update
-        logger.info("Performing initial metrics update...")
-        update_prometheus_metrics()
-        
-        # Update metrics every interval
-        while True:
-            time.sleep(METRICS_INTERVAL_SECONDS)
-            logger.info("Updating metrics...")
-            update_prometheus_metrics()
+        try:
+            QUERY_COUNT.inc()
+            logger.info(f"Querying AWS Cost Explorer for month-to-date ({start_date} to {end_date})")
+            response = self.client.get_cost_and_usage(
+                TimePeriod={
+                    "Start": start_date,
+                    "End": end_date
+                },
+                Granularity="MONTHLY",
+                Metrics=["UnblendedCost"]
+            )
             
-    except KeyboardInterrupt:
-        logger.info("Exiting AWS Cost Exporter")
+            # Parse the response
+            results = response.get("ResultsByTime", [])
+            if results:
+                amount = float(results[0].get("Total", {}).get("UnblendedCost", {}).get("Amount", 0))
+                return amount
+            
+            return 0.0
+        except ClientError as e:
+            QUERY_ERRORS.inc()
+            logger.error(f"AWS Cost Explorer API error: {e}")
+            return None
+        except Exception as e:
+            QUERY_ERRORS.inc()
+            logger.error(f"Error getting month-to-date cost: {e}")
+            return None
+    
+    @lru_cache(maxsize=1)
+    def get_daily_cost(self, days_ago: int = 1) -> Optional[float]:
+        """
+        Get the cost for a specific day.
+        Default is previous day.
+        """
+        if not self.client:
+            logger.error("No Cost Explorer client available")
+            return None
+        
+        # Calculate date range
+        today = datetime.now(timezone.utc)
+        target_date = today - timedelta(days=days_ago)
+        start_date = target_date.strftime("%Y-%m-%d")
+        end_date = (target_date + timedelta(days=1)).strftime("%Y-%m-%d")
+        
+        try:
+            QUERY_COUNT.inc()
+            logger.info(f"Querying AWS Cost Explorer for daily cost ({start_date})")
+            response = self.client.get_cost_and_usage(
+                TimePeriod={
+                    "Start": start_date,
+                    "End": end_date
+                },
+                Granularity="DAILY",
+                Metrics=["UnblendedCost"]
+            )
+            
+            # Parse the response
+            results = response.get("ResultsByTime", [])
+            if results:
+                amount = float(results[0].get("Total", {}).get("UnblendedCost", {}).get("Amount", 0))
+                return amount
+            
+            return 0.0
+        except ClientError as e:
+            QUERY_ERRORS.inc()
+            logger.error(f"AWS Cost Explorer API error: {e}")
+            return None
+        except Exception as e:
+            QUERY_ERRORS.inc()
+            logger.error(f"Error getting daily cost: {e}")
+            return None
+    
+    @lru_cache(maxsize=1)
+    def get_cost_by_service(self, days: int = 30) -> Dict[str, float]:
+        """
+        Get costs broken down by AWS service.
+        Results are cached to minimize API calls.
+        """
+        if not self.client:
+            logger.error("No Cost Explorer client available")
+            return {}
+        
+        # Calculate date range
+        today = datetime.now(timezone.utc)
+        start_date = (today - timedelta(days=days)).strftime("%Y-%m-%d")
+        end_date = today.strftime("%Y-%m-%d")
+        
+        try:
+            QUERY_COUNT.inc()
+            logger.info(f"Querying AWS Cost Explorer for cost by service")
+            response = self.client.get_cost_and_usage(
+                TimePeriod={
+                    "Start": start_date,
+                    "End": end_date
+                },
+                Granularity="MONTHLY",
+                Metrics=["UnblendedCost"],
+                GroupBy=[{
+                    "Type": "DIMENSION",
+                    "Key": "SERVICE"
+                }]
+            )
+            
+            # Parse the response
+            results = {}
+            for time_period in response.get("ResultsByTime", []):
+                for group in time_period.get("Groups", []):
+                    service = group.get("Keys", [""])[0]
+                    amount = float(group.get("Metrics", {}).get("UnblendedCost", {}).get("Amount", 0))
+                    if service in results:
+                        results[service] += amount
+                    else:
+                        results[service] = amount
+            
+            return results
+        except ClientError as e:
+            QUERY_ERRORS.inc()
+            logger.error(f"AWS Cost Explorer API error: {e}")
+            return {}
+        except Exception as e:
+            QUERY_ERRORS.inc()
+            logger.error(f"Error getting cost by service: {e}")
+            return {}
+    
+    @lru_cache(maxsize=1)
+    def get_cost_by_tag(self, tag_key: str, days: int = 30) -> Dict[str, float]:
+        """
+        Get costs broken down by a specific resource tag.
+        Results are cached to minimize API calls.
+        """
+        if not self.client:
+            logger.error("No Cost Explorer client available")
+            return {}
+        
+        # Calculate date range
+        today = datetime.now(timezone.utc)
+        start_date = (today - timedelta(days=days)).strftime("%Y-%m-%d")
+        end_date = today.strftime("%Y-%m-%d")
+        
+        try:
+            QUERY_COUNT.inc()
+            logger.info(f"Querying AWS Cost Explorer for cost by tag: {tag_key}")
+            response = self.client.get_cost_and_usage(
+                TimePeriod={
+                    "Start": start_date,
+                    "End": end_date
+                },
+                Granularity="MONTHLY",
+                Metrics=["UnblendedCost"],
+                GroupBy=[{
+                    "Type": "TAG",
+                    "Key": tag_key
+                }]
+            )
+            
+            # Parse the response
+            results = {}
+            for time_period in response.get("ResultsByTime", []):
+                for group in time_period.get("Groups", []):
+                    tag_value = group.get("Keys", [""])[0].replace(f"{tag_key}$", "")
+                    amount = float(group.get("Metrics", {}).get("UnblendedCost", {}).get("Amount", 0))
+                    if tag_value in results:
+                        results[tag_value] += amount
+                    else:
+                        results[tag_value] = amount
+            
+            return results
+        except ClientError as e:
+            QUERY_ERRORS.inc()
+            logger.error(f"AWS Cost Explorer API error: {e}")
+            return {}
+        except Exception as e:
+            QUERY_ERRORS.inc()
+            logger.error(f"Error getting cost by tag: {e}")
+            return {}
+    
+    def clear_cache(self):
+        """Clear all cached data to force fresh queries."""
+        self.get_month_to_date_cost.cache_clear()
+        self.get_daily_cost.cache_clear()
+        self.get_cost_by_service.cache_clear()
+        self.get_cost_by_tag.cache_clear()
+        logger.info("Cleared all cached cost data")
+
+
+def update_metrics(collector: AWSCostCollector):
+    """Update all Prometheus metrics with fresh data from AWS."""
+    try:
+        # Get monthly cost
+        monthly_cost = collector.get_month_to_date_cost()
+        if monthly_cost is not None:
+            MONTHLY_COST.set(monthly_cost)
+            logger.info(f"Updated monthly cost: ${monthly_cost:.2f}")
+        
+        # Get daily cost
+        daily_cost = collector.get_daily_cost()
+        if daily_cost is not None:
+            DAILY_COST.set(daily_cost)
+            logger.info(f"Updated daily cost: ${daily_cost:.2f}")
+        
+        # Get cost by service
+        service_costs = collector.get_cost_by_service()
+        # Clear existing metrics
+        for label in list(SERVICE_COST._metrics.keys()):
+            SERVICE_COST.remove(*label)
+        # Set new values
+        for service, cost in service_costs.items():
+            SERVICE_COST.labels(service=service).set(cost)
+        logger.info(f"Updated service costs for {len(service_costs)} services")
+        
+        # Get cost by environment tag
+        tag_costs = collector.get_cost_by_tag("Environment")
+        # Clear existing metrics
+        for label in list(COST_BY_TAG._metrics.keys()):
+            COST_BY_TAG.remove(*label)
+        # Set new values
+        for tag_value, cost in tag_costs.items():
+            COST_BY_TAG.labels(key="Environment", value=tag_value).set(cost)
+        logger.info(f"Updated tag costs for {len(tag_costs)} tag values")
+        
+        # Update last refresh timestamp
+        LAST_REFRESH.set(time.time())
+        logger.info("Successfully updated all metrics")
+        
     except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}")
+        logger.error(f"Error updating metrics: {e}")
+
+
+class MetricsHandler(BaseHTTPRequestHandler):
+    """HTTP handler for Prometheus metrics requests."""
+    
+    def do_GET(self):
+        """Handle GET requests for metrics."""
+        if self.path == "/metrics":
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.end_headers()
+            self.wfile.write(generate_latest(REGISTRY))
+        else:
+            self.send_response(404)
+            self.end_headers()
+            self.wfile.write(b"Not Found")
+    
+    def log_message(self, format, *args):
+        """Override to use our logger instead of stderr."""
+        logger.info(f"{self.address_string()} - {format % args}")
+
+
+def refresh_metrics_periodically(collector: AWSCostCollector, interval: int):
+    """Refresh metrics periodically in the background."""
+    def refresh_worker():
+        while True:
+            try:
+                logger.info(f"Refreshing metrics (interval: {interval}s)")
+                # Clear cache to force fresh data
+                collector.clear_cache()
+                # Update metrics
+                update_metrics(collector)
+                # Sleep until next refresh
+                time.sleep(interval)
+            except Exception as e:
+                logger.error(f"Error in refresh worker: {e}")
+                # Sleep for a while before retrying
+                time.sleep(60)
+    
+    # Start the refresh thread
+    thread = threading.Thread(target=refresh_worker, daemon=True)
+    thread.start()
+    return thread
+
+
+def main():
+    """Main entry point for the AWS Cost Exporter."""
+    parser = argparse.ArgumentParser(description="AWS Cost Exporter for Prometheus")
+    parser.add_argument(
+        "-p", "--port", type=int, default=DEFAULT_PORT,
+        help=f"Port to listen on (default: {DEFAULT_PORT})"
+    )
+    parser.add_argument(
+        "-i", "--interval", type=int, default=DEFAULT_REFRESH_INTERVAL,
+        help=f"Refresh interval in seconds (default: {DEFAULT_REFRESH_INTERVAL})"
+    )
+    parser.add_argument(
+        "-r", "--region", type=str, default=AWS_REGION,
+        help=f"AWS region (default: {AWS_REGION})"
+    )
+    args = parser.parse_args()
+    
+    # Create collector
+    collector = AWSCostCollector(region=args.region)
+    
+    # Populate initial metrics
+    logger.info("Initializing metrics with first data pull")
+    update_metrics(collector)
+    
+    # Start background refresh thread
+    refresh_thread = refresh_metrics_periodically(collector, args.interval)
+    
+    # Start HTTP server
+    server_address = ("", args.port)
+    httpd = HTTPServer(server_address, MetricsHandler)
+    logger.info(f"Starting AWS Cost Exporter on port {args.port}")
+    
+    # Handle graceful shutdown
+    def signal_handler(sig, frame):
+        logger.info("Shutting down AWS Cost Exporter")
+        httpd.shutdown()
+        sys.exit(0)
+    
+    signal.signal(signal.SIGINT, signal_handler)
+    signal.signal(signal.SIGTERM, signal_handler)
+    
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        pass
+    except Exception as e:
+        logger.error(f"Error in server: {e}")
+    finally:
+        httpd.server_close()
+        logger.info("Server stopped")
+    
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

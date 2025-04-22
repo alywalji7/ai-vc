@@ -4,8 +4,9 @@ import { Inter } from 'next/font/google'
 import Navbar from './components/Navbar'
 import TRPCProvider from '@/lib/trpc/Provider'
 import { ThemeProvider } from '@/lib/theme/ThemeProvider'
+import { cn } from '@/lib/utils'
 
-const inter = Inter({ subsets: ['latin'] })
+const inter = Inter({ subsets: ['latin'], variable: '--font-sans' })
 
 export const metadata: Metadata = {
   title: 'AI.VC Investment Platform',
@@ -19,13 +20,30 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.className} min-h-screen bg-white dark:bg-gray-900 text-gray-900 dark:text-gray-100 transition-colors duration-300`}>
-        <ThemeProvider attribute="class" defaultTheme="system" enableSystem>
+      <body className={cn(
+        "min-h-screen bg-background font-sans antialiased",
+        inter.variable
+      )}>
+        <ThemeProvider 
+          attribute="class" 
+          defaultTheme="system" 
+          enableSystem
+          disableTransitionOnChange
+        >
           <TRPCProvider>
-            <Navbar />
-            <main className="container mx-auto py-6 px-4">
-              {children}
-            </main>
+            <div className="flex flex-col min-h-screen">
+              <Navbar />
+              <main className="container mx-auto py-6 px-4 flex-1">
+                {children}
+              </main>
+              <footer className="py-4 bg-card border-t border-border">
+                <div className="container mx-auto px-4">
+                  <p className="text-center text-sm text-muted-foreground">
+                    &copy; {new Date().getFullYear()} AI.VC Platform. All rights reserved.
+                  </p>
+                </div>
+              </footer>
+            </div>
           </TRPCProvider>
         </ThemeProvider>
       </body>
