@@ -38,3 +38,7 @@ build:
 clean:
         docker compose down -v
         docker system prune -f
+
+# Start observability stack
+observability:
+        docker compose up -d prometheus alertmanager grafana jaeger

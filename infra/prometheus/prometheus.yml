@@ -2,56 +2,70 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
+rule_files:
+  - "rules/alerts.yml"
+
 alerting:
   alertmanagers:
     - static_configs:
         - targets:
             - alertmanager:9093
 
-rule_files:
-  - 'rules/alerts.yml'
-
 scrape_configs:
-  - job_name: 'prometheus'
+  - job_name: "prometheus"
     static_configs:
-      - targets: ['localhost:9090']
+      - targets: ["localhost:9090"]
 
-  - job_name: 'backend'
-    metrics_path: '/metrics'
+  - job_name: "backend"
+    metrics_path: /metrics
     static_configs:
-      - targets: ['backend:8000']
+      - targets: ["backend:8000"]
+    scrape_interval: 5s
 
-  - job_name: 'radar'
-    metrics_path: '/metrics'
+  - job_name: "radar"
+    metrics_path: /metrics
     static_configs:
-      - targets: ['radar:8050']
+      - targets: ["radar:8050"]
+    scrape_interval: 5s
 
-  - job_name: 'ic_simulator'
-    metrics_path: '/metrics'
+  - job_name: "ic_sim"
+    metrics_path: /metrics
     static_configs:
-      - targets: ['ic_simulator:8060']
+      - targets: ["ic_sim:8060"]
+    scrape_interval: 5s
 
-  - job_name: 'term_sheet'
-    metrics_path: '/metrics'
+  - job_name: "term_sheet"
+    metrics_path: /metrics
     static_configs:
-      - targets: ['term_sheet:8070']
+      - targets: ["term_sheet:8070"]
+    scrape_interval: 5s
 
-  - job_name: 'graph_ingest'
-    metrics_path: '/metrics'
+  - job_name: "graph_ingest"
+    metrics_path: /metrics
     static_configs:
-      - targets: ['graph_ingest:8080']
+      - targets: ["graph_ingest:8080"]
+    scrape_interval: 5s
 
-  - job_name: 'similarity_api'
-    metrics_path: '/metrics'
+  - job_name: "scheduler"
+    metrics_path: /metrics
     static_configs:
-      - targets: ['similarity_api:8090']
+      - targets: ["scheduler:8085"]
+    scrape_interval: 5s
 
-  - job_name: 'scheduler'
-    metrics_path: '/metrics'
+  - job_name: "similarity_api"
+    metrics_path: /metrics
     static_configs:
-      - targets: ['scheduler:8085']
+      - targets: ["similarity_api:8090"]
+    scrape_interval: 5s
 
-  - job_name: 'telemetry'
-    metrics_path: '/metrics'
+  - job_name: "telemetry"
+    metrics_path: /metrics
     static_configs:
-      - targets: ['telemetry:8100']
+      - targets: ["telemetry:8100"]
+    scrape_interval: 5s
+
+  - job_name: "frontend"
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["frontend:5000"]
+    scrape_interval: 5s

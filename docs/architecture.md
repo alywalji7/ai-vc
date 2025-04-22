@@ -1,165 +1,261 @@
-# AI.VC System Architecture
+# AI.VC Platform Architecture
 
-## System Overview
+## Overview
 
-AI.VC is a sophisticated investment decision support system designed to assist venture capital decision-making through a combination of rule-based filtering and AI-powered analysis. The system follows a polylith architecture pattern with multiple services that work together to provide a comprehensive investment platform.
+The AI.VC platform is designed as a comprehensive investment decision support system combining rule-based filtering with advanced AI analysis techniques. This document outlines the high-level architecture, service interactions, and data flows within the platform.
 
-## Directory Structure
+## System Architecture
 
-The repository follows a polylith folder pattern:
+The platform is built as a microservices architecture following a polylith pattern with these key directories:
+- `/services`: Contains all microservices
+- `/libs`: Shared libraries used across services
+- `/infra`: Infrastructure configuration 
+- `/docs`: Documentation
 
-- `/services`: Contains all microservices, each in its own folder
-- `/libs`: Shared libraries and utilities used across services
-- `/infra`: Infrastructure configuration files (Docker, K8s, etc.)
-- `/docs`: Documentation files
-- `/data`: Static data files and seed data
-- `/scripts`: Utility scripts for development and operations
-- `/playwright`: End-to-end tests using Playwright
+```mermaid
+graph TD
+    subgraph Frontend
+        LP[LP Portal]
+    end
+    
+    subgraph Core_Services
+        GI[Graph Ingest Service]
+        SCH[ETL Scheduler]
+        SIM[Similarity API]
+        RAD[Deal-Flow Radar]
+        IC[Investment Committee Simulator]
+        TS[Term Sheet Generator]
+        TEL[Portfolio Telemetry]
+    end
+    
+    subgraph Storage
+        DB[(PostgreSQL)]
+        VEC[(Qdrant)]
+        OBJ[(MinIO)]
+        KV[(Redis)]
+    end
+    
+    subgraph Message_Bus
+        KAF[Kafka]
+    end
+    
+    subgraph Observability
+        PROM[Prometheus]
+        GRAF[Grafana]
+        JAEG[Jaeger]
+        ALRT[Alertmanager]
+    end
+    
+    LP <--> GI
+    LP <--> RAD
+    LP <--> IC
+    LP <--> TS
+    LP <--> TEL
+    
+    GI --> DB
+    GI --> VEC
+    GI --> OBJ
+    GI --> KAF
+    
+    SCH <--> DB
+    SCH --> KAF
+    
+    SIM <--> VEC
+    SIM <--> DB
+    
+    RAD <--> DB
+    RAD <--> SIM
+    
+    IC <--> DB
+    IC <--> OBJ
+    
+    TS <--> DB
+    TS <--> OBJ
+    
+    TEL <--> DB
+    TEL --> KAF
+    
+    PROM --> ALRT
+    PROM --> GRAF
+    JAEG --> GRAF
+```
 
-## Services
+## Services Description
 
-1. **Data Ingestion & Knowledge Graph Service** (`/services/graph_ingest`)
-   - Ingests data from various sources (GitHub, Crunchbase, etc.)
-   - Builds a knowledge graph of company relationships
-   - Provides APIs for querying the graph
+### 1. Data Ingestion & Knowledge Graph Service
+- Ingests company data from multiple sources 
+- Creates graph representation of companies and relationships
+- Extracts features for the Radar model
+- Stores documents in MinIO
+- Pushes vectorized content to Qdrant
 
-2. **Event-Driven ETL Scheduler** (`/services/scheduler`)
-   - Manages scheduled tasks with cron expressions
-   - Handles task execution and tracking
-   - Provides metrics for monitoring
+```mermaid
+sequenceDiagram
+    participant External as External Sources
+    participant GI as Graph Ingest Service
+    participant DB as PostgreSQL
+    participant VEC as Qdrant
+    participant OBJ as MinIO
 
-3. **Vectorizer & Similarity API** (`/services/similarity_api`)
-   - Embeds textual data for semantic search
-   - Provides APIs for similarity queries
-   - Supports code, text, and tabular data
+    External->>GI: Raw company data
+    GI->>GI: Process and normalize data
+    GI->>DB: Store structured data
+    GI->>GI: Generate embeddings
+    GI->>VEC: Store vectors and metadata
+    GI->>OBJ: Store original documents
+    GI->>DB: Update knowledge graph
+```
 
-4. **Deal-Flow Radar** (`/services/radar`)
-   - Scores companies based on various metrics
-   - Identifies high-potential investment opportunities
-   - Provides trend analysis and visualizations
+### 2. Event-Driven ETL Scheduler
+- Manages recurring data processing jobs
+- Orchestrates cross-service workflows
+- Handles data transformation tasks
+- Uses Kafka for reliable messaging
 
-5. **Backend Service** (`/services/backend`)
-   - Main API gateway for the frontend
-   - Handles user authentication and authorization
-   - Coordinates between other services
+### 3. Vectorizer & Similarity API
+- Provides vector search capabilities
+- Handles semantic search requests
+- Manages embedding models
+- Services similarity queries for other components
 
-6. **Investment Committee Simulator** (`/services/ic_sim`)
-   - Two-stage analysis process:
-     1. Rule-based filtering (sector fit, round size, geography)
-     2. LLM-based assessment using Tree-of-Thought reasoning
-   - Provides detailed investment recommendations with rationale
+### 4. Deal-Flow Radar (Scoring Service)
+- Predicts company success probability
+- Utilizes ML models with MLflow tracking
+- Auto-retrains on new data
+- Implements cost guardrails and rate limiting
 
-7. **Term-Sheet Generator & Negotiator Bot** (`/services/term_sheet`)
-   - Generates NVCA model documents using templates
-   - Provides real-time negotiation via WebSocket API
-   - Implements lane guards for extreme counter-offers
+```mermaid
+flowchart TD
+    A[Company Data Input] --> B[Radar Service]
+    B --> C{Rule-Based Filters}
+    C -->|Pass| D[ML Model Scoring]
+    C -->|Fail| E[Rejection with Reason]
+    D --> F[Score Analysis]
+    F --> G[Investment Recommendation]
+    
+    subgraph MLOps
+        H[Model Training Pipeline]
+        I[Model Registry]
+        J[Model Versioning]
+    end
+    
+    K[(Historical Data)] --> H
+    H --> I
+    I --> J
+    J --> D
+```
 
-8. **Frontend Service** (`/services/frontend`)
-   - Next.js 14 frontend with TypeScript
-   - Provides user interface for all system features
-   - Responsive design for desktop and mobile
+### 5. Investment Committee Simulator
+- Two-stage decision process
+- Rule-based filtering for initial qualification
+- LLM-based analysis using Tree-of-Thought reasoning
+- Audit logging for all decisions
+
+### 6. Term-Sheet Generator & Negotiator Bot
+- Generates legal documents based on NVCA templates
+- Provides real-time negotiation capabilities
+- Includes Slack integration for extreme counter-offers
+- WebSocket interface for interactive negotiations
+
+### 7. Portfolio Telemetry Service
+- Monitors portfolio company performance
+- Triggers follow-on investment decisions
+- Runway and growth-based analysis
+- Uses APScheduler for periodic assessment
+
+### 8. Frontend LP Portal
+- Next.js 14 web interface
+- tRPC for type-safe API calls
+- Theme provider for light/dark mode
+- Interactive dashboards for portfolio monitoring
 
 ## Technology Stack
 
-- **Languages**: Python 3.11, TypeScript
-- **Frameworks**: FastAPI, Next.js 14
-- **Databases**: PostgreSQL 16
-- **Caching & Messaging**: Redis
-- **Vector Storage**: Qdrant
-- **Object Storage**: Minio
-- **AI Models**: OpenAI GPT-4o, Sentence Transformers
-- **Testing**: pytest, Vitest, Playwright
+| Component | Technology |
+|-----------|------------|
+| Backend Services | Python 3.11, FastAPI |
+| Frontend | Next.js 14, TypeScript |
+| Database | PostgreSQL 16 |
+| Vector Store | Qdrant |
+| Object Storage | MinIO |
+| Message Broker | Kafka |
+| Caching | Redis |
+| ML Framework | scikit-learn, MLflow |
+| AI Models | OpenAI GPT-4o |
+| Tracing | Jaeger, OpenTelemetry |
+| Metrics | Prometheus, Grafana |
+| Alerting | Alertmanager |
 
-## Architecture Diagrams
+## Data Flow Architecture
 
-(Detailed architecture diagrams to be added)
+The following diagram illustrates the primary data flows through the system:
 
-## Development Setup
-
-1. Clone the repository
-2. Install Docker and Docker Compose
-3. Run `make dev` to start all services
-4. Access the frontend at `http://localhost:5000`
-
-## QA Checklist
-
-### Running Tests Locally
-
-#### Backend Tests
-
-Run pytest for all services:
-
-```bash
-# Run all tests
-python -m pytest
-
-# Run tests for a specific service
-python -m pytest services/term_sheet/tests/
-
-# Run tests with verbose output
-python -m pytest -v
+```mermaid
+flowchart TD
+    A[Data Sources] --> B[Graph Ingest]
+    B --> C[(Knowledge Graph DB)]
+    B --> D[(Vector Database)]
+    
+    C --> E[Radar Service]
+    D --> E
+    E --> F[Investment Committee]
+    
+    F -->|Approved| G[Term Sheet Generator]
+    F -->|Rejected| H[Feedback Loop]
+    
+    G --> I[Portfolio Telemetry]
+    I --> J[Follow-on Decisions]
+    J --> E
 ```
 
-#### Frontend Tests
+## Compliance and Security Layer
 
-Run Vitest for component tests:
+All services interact with a common compliance middleware that provides:
+- Investor accreditation verification
+- OFAC sanctions checking
+- Decision payload hashing
+- Append-only audit logs
+- Kill-switch admin overrides
 
-```bash
-cd services/frontend
-npm test
+```mermaid
+flowchart LR
+    A[Services] <--> B[Compliance Middleware]
+    B <--> C[(Audit Logs)]
+    B <--> D[Verification Services]
+    E[Admin Override] --> B
 ```
 
-#### End-to-End Tests
+## Observability Infrastructure
 
-Run Playwright tests:
+The platform includes comprehensive observability with:
+- Distributed tracing through OpenTelemetry and Jaeger
+- Metrics collection with Prometheus
+- Visualization dashboards in Grafana
+- Alerts via Alertmanager
+- Detailed token usage monitoring for OpenAI costs
 
-```bash
-# Install Playwright
-npx playwright install --with-deps
-
-# Start all services
-make dev
-
-# In another terminal, seed test data
-python scripts/seed_fixtures.py
-
-# Run all Playwright tests
-npx playwright test
-
-# Run a specific test file
-npx playwright test playwright/08-negotiator.spec.ts
-
-# Run tests with UI mode
-npx playwright test --ui
+```mermaid
+flowchart TD
+    A[Services] --> B[OpenTelemetry SDK]
+    B --> C[Jaeger]
+    A --> D[Prometheus]
+    D --> E[Alertmanager]
+    D --> F[Grafana]
+    C --> F
 ```
 
-### Continuous Integration
+## Development Environment
 
-The CI pipeline runs three main jobs:
+The development environment can be started with:
+```bash
+make dev  # Start all services
+make observability  # Start the observability stack
+```
 
-1. `backend-tests`: Runs pytest for all Python services
-2. `frontend-tests`: Runs Vitest for the Next.js components
-3. `e2e-tests`: Spins up the full stack and runs Playwright tests
+## Deployment Model
 
-All jobs must pass for a PR to be considered ready for merge.
-
-### Manual Testing
-
-For a comprehensive manual test:
-
-1. Start all services with `make dev`
-2. Seed fixture data with `python scripts/seed_fixtures.py`
-3. Navigate to `http://localhost:5000`
-4. Perform a click-through test of all main features:
-   - View companies in the deal flow radar
-   - Check the dataroom for `acme-inc`
-   - Review IC simulation results
-   - Test term sheet negotiation
-
-### Performance Testing
-
-(To be added)
-
-## Deployment
-
-(To be added)
+The system is designed to be deployed in a Kubernetes environment with:
+- Horizontal scaling for stateless services
+- High availability configurations for databases
+- Resource quotas and cost guardrails
+- GitOps-based deployment pipeline

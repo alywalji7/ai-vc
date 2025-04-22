@@ -1,0 +1,64 @@
+{
+  "name": "AI.VC Platform Documentation",
+  "title": "AI.VC Platform Documentation",
+  "description": "Technical documentation for the AI.VC investment platform",
+  "logo": {
+    "light": "/public/logo-light.svg",
+    "dark": "/public/logo-dark.svg"
+  },
+  "favicon": "/public/favicon.png",
+  "colors": {
+    "primary": "#0066FF",
+    "light": "#F5F8FF",
+    "dark": "#0A1F44",
+    "background": {
+      "light": "#FFFFFF",
+      "dark": "#111827"
+    }
+  },
+  "tabs": [
+    {
+      "title": "Docs",
+      "hasRoutes": true,
+      "routes": [
+        {
+          "group": "Overview",
+          "pages": [
+            "docs/architecture.md"
+          ]
+        },
+        {
+          "group": "Developer Resources",
+          "pages": [
+            "docs/api_reference.md"
+          ]
+        },
+        {
+          "group": "Operations",
+          "pages": [
+            "docs/oncall.md",
+            "docs/observability.md"
+          ]
+        }
+      ]
+    }
+  ],
+  "topNav": [
+    {
+      "title": "GitHub",
+      "href": "https://github.com/yourusername/aivc-platform"
+    }
+  ],
+  "search": {
+    "prompt": "Search documentation..."
+  },
+  "feedback": {
+    "suggestEdit": true,
+    "raiseIssue": true
+  },
+  "sidebar": {
+    "subroutes": true
+  },
+  "mermaid": true,
+  "redirects": []
+}
