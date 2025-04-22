@@ -98,7 +98,7 @@ task = "packager.installForAll"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd services/graph_ingest && pip install -r requirements.txt && python main.py"
+args = "cd services/graph_ingest && python main.py"
 waitForPort = 8080
 
 [[workflows.workflow]]

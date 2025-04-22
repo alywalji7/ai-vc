@@ -1,6 +1,7 @@
 """
-Graph Ingest Service package.
+Graph Ingest Service application package.
 
-This package contains modules for the Graph Ingest Service, which is responsible
-for ingesting data from various sources into the knowledge graph.
+This package contains modules for the Graph Ingest Service.
 """
+
+__version__ = "0.1.0"

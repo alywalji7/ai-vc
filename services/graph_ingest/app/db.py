@@ -1,151 +1,198 @@
 """
-Database module for the graph ingestion service.
+Database module for the Graph Ingest Service.
 
-This module contains database connection and initialization logic.
+This module handles database connections and schema initialization.
 """
-import os
-import logging
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-)
+import os
+import json
+import logging
+from typing import Dict, Any, Optional, List
+
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, ForeignKey, JSON, Text
+from sqlalchemy.orm import sessionmaker, declarative_base, Session
+from sqlalchemy.sql import func
+
+# Set up logging
 logger = logging.getLogger(__name__)
 
-# Get database URL from environment or use default
-DATABASE_URL = os.environ.get(
-    "DATABASE_URL", 
-    "postgresql://postgres:postgres@localhost:5432/aivc"
-)
+# Get database URL from environment variable
+DATABASE_URL = os.environ.get("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/aivc")
 
-# Create engine
+# Create SQLAlchemy engine and session factory
 engine = create_engine(DATABASE_URL)
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Create session maker
-Session = sessionmaker(bind=engine)
+# Create declarative base
+Base = declarative_base()
 
-def get_session():
+class Entity(Base):
     """
-    Get a new database session.
+    Entity model for the knowledge graph.
     
-    Returns:
-        SQLAlchemy session
+    Entities represent nodes in the knowledge graph, such as companies, people, or repositories.
     """
-    return Session()
+    __tablename__ = "entities"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    type = Column(String(50), index=True, nullable=False)
+    name = Column(String(255), index=True, nullable=False)
+    properties = Column(JSON, default={})
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+class Relationship(Base):
+    """
+    Relationship model for the knowledge graph.
+    
+    Relationships represent edges between entities in the knowledge graph.
+    """
+    __tablename__ = "relationships"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    source_id = Column(Integer, ForeignKey("entities.id"), index=True, nullable=False)
+    target_id = Column(Integer, ForeignKey("entities.id"), index=True, nullable=False)
+    type = Column(String(50), index=True, nullable=False)
+    properties = Column(JSON, default={})
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+
+class RawData(Base):
+    """
+    Raw data model for storing original data before processing.
+    
+    This model stores raw data from various sources (Crunchbase, GitHub, etc.)
+    before it is processed and inserted into the knowledge graph.
+    """
+    __tablename__ = "raw_data"
+    
+    id = Column(Integer, primary_key=True, index=True)
+    source = Column(String(50), index=True, nullable=False)
+    source_id = Column(String(255), index=True, nullable=False)
+    data = Column(JSON)
+    content = Column(Text, nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
 
 def init_db():
     """
-    Initialize the database with required tables.
+    Initialize the database by creating all tables.
     """
-    logger.info("Initializing database for graph ingestion service")
-    
     try:
-        with engine.connect() as conn:
-            transaction = conn.begin()
-            try:
-                # Check database connection
-                conn.execute(text("SELECT 1"))
-                logger.info("Database connection test successful")
-                
-                # Check if entities table exists
-                result = conn.execute(text(
-                    "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'entities')"
-                ))
-                entities_exists = result.scalar()
-                
-                # Check if relationships table exists
-                result = conn.execute(text(
-                    "SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'relationships')"
-                ))
-                relationships_exists = result.scalar()
-                
-                # Create entities table if it doesn't exist
-                if not entities_exists:
-                    logger.info("Creating entities table")
-                    conn.execute(text("""
-                    CREATE TABLE entities (
-                        id SERIAL PRIMARY KEY,
-                        type VARCHAR(50) NOT NULL,
-                        name VARCHAR(255) NOT NULL,
-                        properties JSONB NOT NULL DEFAULT '{}',
-                        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-                        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
-                    )
-                    """))
-                    conn.execute(text("""
-                    CREATE INDEX idx_entities_type ON entities (type)
-                    """))
-                    conn.execute(text("""
-                    CREATE INDEX idx_entities_name ON entities (name)
-                    """))
-                    conn.execute(text("""
-                    CREATE INDEX idx_entities_properties ON entities USING GIN (properties)
-                    """))
-                    logger.info("Created entities table")
-                else:
-                    logger.info("Entities table already exists")
-                
-                # Create relationships table if it doesn't exist
-                if not relationships_exists:
-                    logger.info("Creating relationships table")
-                    conn.execute(text("""
-                    CREATE TABLE relationships (
-                        id SERIAL PRIMARY KEY,
-                        source_id INTEGER NOT NULL REFERENCES entities(id),
-                        target_id INTEGER NOT NULL REFERENCES entities(id),
-                        type VARCHAR(50) NOT NULL,
-                        properties JSONB NOT NULL DEFAULT '{}',
-                        created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-                        updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
-                        UNIQUE(source_id, target_id, type)
-                    )
-                    """))
-                    conn.execute(text("""
-                    CREATE INDEX idx_relationships_source_id ON relationships (source_id)
-                    """))
-                    conn.execute(text("""
-                    CREATE INDEX idx_relationships_target_id ON relationships (target_id)
-                    """))
-                    conn.execute(text("""
-                    CREATE INDEX idx_relationships_type ON relationships (type)
-                    """))
-                    conn.execute(text("""
-                    CREATE INDEX idx_relationships_properties ON relationships USING GIN (properties)
-                    """))
-                    logger.info("Created relationships table")
-                else:
-                    logger.info("Relationships table already exists")
-                
-                transaction.commit()
-                logger.info("Database schema setup complete")
-                
-            except Exception as e:
-                transaction.rollback()
-                logger.error(f"Error setting up database schema: {str(e)}")
-                raise
-            
-        # Test if tables were actually created
-        with engine.connect() as conn:
-            try:
-                # Test entities table
-                result = conn.execute(text("SELECT COUNT(*) FROM entities"))
-                entities_count = result.scalar()
-                logger.info(f"Entities table check: {entities_count} rows")
-                
-                # Test relationships table
-                result = conn.execute(text("SELECT COUNT(*) FROM relationships"))
-                relationships_count = result.scalar()
-                logger.info(f"Relationships table check: {relationships_count} rows")
-                
-                logger.info("Database initialization complete and tables verified")
-                
-            except Exception as e:
-                logger.error(f"Error verifying tables: {str(e)}")
-                raise
-            
+        Base.metadata.create_all(bind=engine)
+        logger.info("Database tables created successfully")
     except Exception as e:
-        logger.error(f"Error initializing database: {str(e)}")
+        logger.error(f"Error creating database tables: {str(e)}")
+        raise
+
+def get_session() -> Session:
+    """
+    Get a database session.
+    
+    Returns:
+        Database session
+    """
+    db = SessionLocal()
+    try:
+        return db
+    except Exception as e:
+        db.close()
+        logger.error(f"Error getting database session: {str(e)}")
+        raise
+
+def create_entity(session, entity_type: str, name: str, properties: Dict[str, Any] = None) -> Entity:
+    """
+    Create an entity in the knowledge graph.
+    
+    Args:
+        session: Database session
+        entity_type: Type of entity
+        name: Name of entity
+        properties: Properties of entity
+        
+    Returns:
+        Created entity
+    """
+    try:
+        entity = Entity(
+            type=entity_type,
+            name=name,
+            properties=properties if properties is not None else {}
+        )
+        
+        session.add(entity)
+        session.commit()
+        session.refresh(entity)
+        
+        return entity
+    
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error creating entity {entity_type}/{name}: {str(e)}")
+        raise
+
+def create_relationship(session, source_id: int, target_id: int, relationship_type: str, properties: Dict[str, Any] = None) -> Relationship:
+    """
+    Create a relationship in the knowledge graph.
+    
+    Args:
+        session: Database session
+        source_id: ID of source entity
+        target_id: ID of target entity
+        relationship_type: Type of relationship
+        properties: Properties of relationship
+        
+    Returns:
+        Created relationship
+    """
+    try:
+        relationship = Relationship(
+            source_id=source_id,
+            target_id=target_id,
+            type=relationship_type,
+            properties=properties if properties is not None else {}
+        )
+        
+        session.add(relationship)
+        session.commit()
+        session.refresh(relationship)
+        
+        return relationship
+    
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error creating relationship {relationship_type} ({source_id} -> {target_id}): {str(e)}")
+        raise
+
+def store_raw_data(session, source: str, source_id: str, data: Dict[str, Any] = None, content: str = None) -> RawData:
+    """
+    Store raw data from a source.
+    
+    Args:
+        session: Database session
+        source: Source of data (e.g., 'crunchbase', 'github')
+        source_id: ID in the source system
+        data: JSON data
+        content: Text content
+        
+    Returns:
+        Created raw data entry
+    """
+    try:
+        raw_data = RawData(
+            source=source,
+            source_id=source_id,
+            data=data if data is not None else {},
+            content=content
+        )
+        
+        session.add(raw_data)
+        session.commit()
+        session.refresh(raw_data)
+        
+        return raw_data
+    
+    except Exception as e:
+        session.rollback()
+        logger.error(f"Error storing raw data {source}/{source_id}: {str(e)}")
         raise

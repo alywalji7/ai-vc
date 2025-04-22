@@ -1,151 +1,218 @@
 """
 Metrics module for the Graph Ingest Service.
 
-This module contains Prometheus metrics for measuring the performance and activity
-of the Graph Ingest Service.
+This module contains metrics collection functions for the Graph Ingest Service.
 """
 
 import logging
-from prometheus_client import Counter, Gauge
+import time
+from datetime import datetime
+from prometheus_client import Counter, Gauge, Summary
+from typing import Dict, List, Any
+
+import sqlalchemy as sa
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
-# Counters for successful ingestions
-github_ingest_success = Counter(
+# Define Prometheus metrics
+GITHUB_INGEST_SUCCESS = Counter(
     'github_ingest_success_total',
-    'Total number of successful GitHub data ingestions'
+    'Total number of successful GitHub ingestions'
 )
 
-crunchbase_ingest_success = Counter(
+CRUNCHBASE_INGEST_SUCCESS = Counter(
     'crunchbase_ingest_success_total',
-    'Total number of successful Crunchbase data ingestions'
+    'Total number of successful Crunchbase ingestions'
 )
 
-# Counter for failed ingestions
-ingest_failure = Counter(
+INGEST_FAILURE = Counter(
     'ingest_failure_total',
-    'Total number of failed data ingestions'
+    'Total number of failed ingestions',
+    ['source']
 )
 
-# Gauges for entity and relationship counts
-entity_count = Gauge(
-    'graph_entity_count',
+ENTITY_COUNT = Gauge(
+    'entity_count',
     'Number of entities in the knowledge graph',
     ['type']
 )
 
-relationship_count = Gauge(
-    'graph_relationship_count',
+RELATIONSHIP_COUNT = Gauge(
+    'relationship_count',
     'Number of relationships in the knowledge graph',
     ['type']
 )
 
-# Scheduler timestamp
-scheduler_last_run = Gauge(
-    'graph_ingest_scheduler_last_run_timestamp',
-    'Unix timestamp of the last scheduler run'
+INGEST_DURATION = Summary(
+    'ingest_duration_seconds',
+    'Time spent processing an ingestion request',
+    ['source']
 )
 
-# Gauge for knowledge graph density
-graph_density = Gauge(
-    'graph_density',
-    'Ratio of actual relationships to maximum possible relationships'
-)
-
+# Utility functions for incrementing counters
 def increment_github_success():
     """Increment the GitHub ingestion success counter."""
-    github_ingest_success.inc()
-    logger.debug("Incremented GitHub ingestion success counter")
+    GITHUB_INGEST_SUCCESS.inc()
 
 def increment_crunchbase_success():
     """Increment the Crunchbase ingestion success counter."""
-    crunchbase_ingest_success.inc()
-    logger.debug("Incremented Crunchbase ingestion success counter")
+    CRUNCHBASE_INGEST_SUCCESS.inc()
 
-def increment_ingest_failure():
-    """Increment the ingestion failure counter."""
-    ingest_failure.inc()
-    logger.debug("Incremented ingestion failure counter")
-
-def update_scheduler_timestamp(timestamp):
-    """Update the scheduler last run timestamp."""
-    scheduler_last_run.set(timestamp)
-    logger.debug(f"Updated scheduler timestamp to {timestamp}")
-
-def update_entity_count(entity_type, count):
+def increment_ingest_failure(source='unknown'):
     """
-    Update the entity count for a given type.
+    Increment the ingestion failure counter.
     
     Args:
-        entity_type: Type of entity
-        count: Number of entities
+        source: Source of the ingestion failure
     """
-    entity_count.labels(type=entity_type).set(count)
-    logger.debug(f"Updated entity count for {entity_type} to {count}")
+    INGEST_FAILURE.labels(source=source).inc()
 
-def update_relationship_count(relationship_type, count):
+def record_ingest_duration(source, duration):
     """
-    Update the relationship count for a given type.
+    Record the duration of an ingestion operation.
     
     Args:
-        relationship_type: Type of relationship
-        count: Number of relationships
+        source: Source of the ingestion
+        duration: Duration in seconds
     """
-    relationship_count.labels(type=relationship_type).set(count)
-    logger.debug(f"Updated relationship count for {relationship_type} to {count}")
+    INGEST_DURATION.labels(source=source).observe(duration)
 
-def update_graph_density(density):
+class IngestTimer:
     """
-    Update the graph density metric.
+    Context manager for timing ingest operations.
+    
+    Usage:
+        with IngestTimer('github'):
+            # Perform ingestion operation
+    """
+    
+    def __init__(self, source):
+        """
+        Initialize the timer.
+        
+        Args:
+            source: Source of the ingestion
+        """
+        self.source = source
+        self.start_time = None
+    
+    def __enter__(self):
+        """Start the timer."""
+        self.start_time = time.time()
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """
+        End the timer and record the duration.
+        
+        If an exception occurred, increment the failure counter.
+        """
+        duration = time.time() - self.start_time
+        record_ingest_duration(self.source, duration)
+        
+        if exc_type is not None:
+            # An exception occurred
+            increment_ingest_failure(self.source)
+            logger.error(f"Error during {self.source} ingestion: {exc_val}")
+
+def calculate_entity_counts(db_session) -> Dict[str, int]:
+    """
+    Calculate the number of entities by type.
     
     Args:
-        density: Density value (0-1)
+        db_session: Database session
+        
+    Returns:
+        Dictionary mapping entity types to counts
     """
-    graph_density.set(density)
-    logger.debug(f"Updated graph density to {density}")
+    try:
+        # Check if the table exists first
+        result = db_session.execute(
+            sa.text("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'entities')")
+        )
+        table_exists = result.scalar()
+        
+        if not table_exists:
+            logger.warning("Table 'entities' does not exist yet")
+            return {}
+            
+        result = db_session.execute(
+            sa.text("SELECT type, COUNT(*) FROM entities GROUP BY type")
+        )
+        
+        counts = {}
+        for row in result:
+            entity_type, count = row
+            counts[entity_type] = count
+            
+            # Update Prometheus metric
+            ENTITY_COUNT.labels(type=entity_type).set(count)
+            
+        return counts
+    
+    except Exception as e:
+        logger.error(f"Error calculating entity counts: {str(e)}")
+        return {}
+
+def calculate_relationship_counts(db_session) -> Dict[str, int]:
+    """
+    Calculate the number of relationships by type.
+    
+    Args:
+        db_session: Database session
+        
+    Returns:
+        Dictionary mapping relationship types to counts
+    """
+    try:
+        # Check if the table exists first
+        result = db_session.execute(
+            sa.text("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'relationships')")
+        )
+        table_exists = result.scalar()
+        
+        if not table_exists:
+            logger.warning("Table 'relationships' does not exist yet")
+            return {}
+            
+        result = db_session.execute(
+            sa.text("SELECT type, COUNT(*) FROM relationships GROUP BY type")
+        )
+        
+        counts = {}
+        for row in result:
+            relationship_type, count = row
+            counts[relationship_type] = count
+            
+            # Update Prometheus metric
+            RELATIONSHIP_COUNT.labels(type=relationship_type).set(count)
+            
+        return counts
+    
+    except Exception as e:
+        logger.error(f"Error calculating relationship counts: {str(e)}")
+        return {}
 
 def calculate_and_update_metrics(db_session):
     """
-    Calculate and update all metrics based on the current database state.
+    Calculate all metrics and update Prometheus.
     
     Args:
         db_session: Database session
     """
-    from sqlalchemy import text
+    logger.info("Updating knowledge graph metrics")
     
-    try:
-        # Count entities by type
-        result = db_session.execute(text("SELECT type, COUNT(*) FROM entities GROUP BY type"))
-        for row in result:
-            entity_type, count = row
-            update_entity_count(entity_type, count)
-        
-        # Count total entities
-        result = db_session.execute(text("SELECT COUNT(*) FROM entities"))
-        total_entities = result.scalar()
-        update_entity_count("total", total_entities)
-        
-        # Count relationships by type
-        result = db_session.execute(text("SELECT type, COUNT(*) FROM relationships GROUP BY type"))
-        for row in result:
-            rel_type, count = row
-            update_relationship_count(rel_type, count)
-        
-        # Count total relationships
-        result = db_session.execute(text("SELECT COUNT(*) FROM relationships"))
-        total_relationships = result.scalar()
-        update_relationship_count("total", total_relationships)
-        
-        # Calculate graph density
-        if total_entities > 1:
-            max_possible_relationships = total_entities * (total_entities - 1)
-            density = total_relationships / max_possible_relationships if max_possible_relationships > 0 else 0
-            update_graph_density(density)
-        else:
-            update_graph_density(0)
-        
-        logger.info("Updated all metrics successfully")
-        
-    except Exception as e:
-        logger.error(f"Error updating metrics: {str(e)}")
+    # Calculate and update entity counts
+    entity_counts = calculate_entity_counts(db_session)
+    logger.info(f"Entity counts: {entity_counts}")
+    
+    # Calculate and update relationship counts
+    relationship_counts = calculate_relationship_counts(db_session)
+    logger.info(f"Relationship counts: {relationship_counts}")
+    
+    return {
+        "entities": entity_counts,
+        "relationships": relationship_counts,
+        "timestamp": datetime.now().isoformat()
+    }

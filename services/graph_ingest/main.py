@@ -12,6 +12,7 @@ from dotenv import load_dotenv
 from prometheus_client import start_http_server
 
 from app.db import init_db
+# Import the API directly from the module since there's a directory conflict
 from app.api import api
 from app.scheduler import start_scheduler
 
@@ -53,10 +54,11 @@ def main():
     logger.info(f"Starting API server on port {port}")
     
     uvicorn.run(
-        api,
+        "main:api",
         host="0.0.0.0",
         port=port,
-        log_level="info"
+        log_level="info",
+        reload=True
     )
     
     return 0

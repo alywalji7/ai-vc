@@ -9,3 +9,4 @@ thefuzz>=0.20.0
 python-Levenshtein>=0.24.0
 boto3>=1.34.0
 requests>=2.31.0
+psycopg2-binary>=2.9.9

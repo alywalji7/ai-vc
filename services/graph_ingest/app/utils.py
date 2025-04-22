@@ -1,61 +1,59 @@
 """
-Utility functions for the Graph Ingest Service.
+Utilities module for the Graph Ingest Service.
 
-This module contains various utility functions used by the Graph Ingest Service,
-including entity deduplication using fuzzy matching.
+This module contains utility functions for the Graph Ingest Service.
 """
 
-import json
+import re
 import logging
-from typing import Dict, List, Any, Optional
+import urllib.parse
+from typing import Dict, Any, Optional, List, Tuple
 
 from sqlalchemy import text
-from thefuzz import fuzz
+from thefuzz import fuzz, process
 
 # Set up logging
 logger = logging.getLogger(__name__)
 
-def fuzzy_match_entity(db_session, entity_type: str, name: str, threshold: int = 85) -> Optional[Dict[str, Any]]:
+def fuzzy_match_entity(db_session, entity_type: str, name: str, min_score: int = 80) -> Optional[Dict[str, Any]]:
     """
-    Find an entity using fuzzy string matching.
+    Find an entity by fuzzy matching its name.
     
     Args:
         db_session: Database session
-        entity_type: Type of entity to match
+        entity_type: Type of entity to search for
         name: Name to match
-        threshold: Minimum score for a match (0-100)
+        min_score: Minimum score for a match (0-100)
         
     Returns:
-        Matched entity or None if no match found
+        Dictionary with entity ID and match score if found, None otherwise
     """
     try:
         # Get all entities of the given type
         result = db_session.execute(
-            text("SELECT id, name, properties FROM entities WHERE type = :type"),
+            text("SELECT id, name FROM entities WHERE type = :type"),
             {"type": entity_type}
         )
         
-        candidates = []
-        for row in result:
-            entity_id, entity_name, properties_json = row
-            properties = json.loads(properties_json)
-            
-            # Get match score using fuzzy token sort ratio
-            score = fuzz.token_sort_ratio(name.lower(), entity_name.lower())
-            
-            if score >= threshold:
-                candidates.append({
-                    "id": entity_id,
-                    "name": entity_name,
-                    "properties": properties,
-                    "score": score
-                })
+        entities = [(row[0], row[1]) for row in result.fetchall()]
         
-        # Sort by score descending and return the best match
-        if candidates:
-            candidates.sort(key=lambda x: x["score"], reverse=True)
-            logger.info(f"Fuzzy matched '{name}' to '{candidates[0]['name']}' with score {candidates[0]['score']}")
-            return candidates[0]
+        if not entities:
+            return None
+        
+        # Prepare entity names for fuzzy matching
+        entity_names = [entity[1] for entity in entities]
+        
+        # Perform fuzzy matching
+        match_name, score, match_idx = process.extractOne(name, entity_names, scorer=fuzz.token_sort_ratio)
+        
+        if score >= min_score:
+            entity_id = entities[match_idx][0]
+            logger.info(f"Fuzzy matched '{name}' to '{match_name}' with score {score}")
+            return {
+                "id": entity_id,
+                "name": match_name,
+                "score": score
+            }
         
         return None
         
@@ -65,7 +63,7 @@ def fuzzy_match_entity(db_session, entity_type: str, name: str, threshold: int =
 
 def normalize_url(url: str) -> str:
     """
-    Normalize a URL by removing trailing slashes, protocol, etc.
+    Normalize a URL by removing trailing slashes and protocol.
     
     Args:
         url: URL to normalize
@@ -73,18 +71,32 @@ def normalize_url(url: str) -> str:
     Returns:
         Normalized URL
     """
-    # Remove protocol
-    if '://' in url:
-        url = url.split('://', 1)[1]
+    if not url:
+        return ""
     
-    # Remove trailing slash
-    url = url.rstrip('/')
+    # Add http:// if no protocol is present
+    if not url.startswith(('http://', 'https://')):
+        url = 'http://' + url
     
-    # Remove 'www.' prefix
-    if url.startswith('www.'):
-        url = url[4:]
-    
-    return url.lower()
+    try:
+        parsed = urllib.parse.urlparse(url)
+        
+        # Normalize domain (remove www., lowercase)
+        netloc = parsed.netloc.lower()
+        if netloc.startswith('www.'):
+            netloc = netloc[4:]
+        
+        # Normalize path (remove trailing slash)
+        path = parsed.path
+        if path.endswith('/'):
+            path = path[:-1]
+        
+        # Return normalized URL without protocol
+        return netloc + path
+        
+    except Exception as e:
+        logger.error(f"Error normalizing URL {url}: {str(e)}")
+        return url
 
 def extract_domain_from_url(url: str) -> str:
     """
@@ -96,53 +108,71 @@ def extract_domain_from_url(url: str) -> str:
     Returns:
         Domain name
     """
-    normalized = normalize_url(url)
+    if not url:
+        return ""
     
-    # Extract domain (everything before the first slash)
-    if '/' in normalized:
-        domain = normalized.split('/', 1)[0]
-    else:
-        domain = normalized
+    # Add http:// if no protocol is present
+    if not url.startswith(('http://', 'https://')):
+        url = 'http://' + url
     
-    return domain
+    try:
+        parsed = urllib.parse.urlparse(url)
+        
+        # Extract domain
+        netloc = parsed.netloc.lower()
+        if netloc.startswith('www.'):
+            netloc = netloc[4:]
+        
+        return netloc
+        
+    except Exception as e:
+        logger.error(f"Error extracting domain from URL {url}: {str(e)}")
+        return url
 
-def parse_csv_to_dict(csv_content: str) -> List[Dict[str, str]]:
+def normalize_company_name(name: str) -> str:
     """
-    Parse CSV content into a list of dictionaries.
+    Normalize a company name for comparison.
     
     Args:
-        csv_content: CSV content as a string
+        name: Company name
         
     Returns:
-        List of dictionaries representing CSV rows
+        Normalized company name
     """
-    import csv
-    from io import StringIO
+    if not name:
+        return ""
     
-    result = []
-    reader = csv.DictReader(StringIO(csv_content))
+    # Convert to lowercase
+    name = name.lower()
     
-    for row in reader:
-        result.append(row)
+    # Remove common company suffixes
+    suffixes = [
+        r"\s+inc\.?$", r"\s+incorporated$", r"\s+corp\.?$", r"\s+corporation$",
+        r"\s+llc$", r"\s+ltd\.?$", r"\s+limited$", r"\s+gmbh$", r"\s+co\.?$",
+        r"\s+company$", r"\s+technologies$", r"\s+technology$", r"\s+labs$",
+        r"\s+group$", r"\s+holdings$", r"\s+systems$"
+    ]
     
-    return result
+    for suffix in suffixes:
+        name = re.sub(suffix, "", name)
+    
+    # Remove punctuation and extra spaces
+    name = re.sub(r"[^\w\s]", " ", name)
+    name = re.sub(r"\s+", " ", name).strip()
+    
+    return name
 
-def merge_properties(existing: Dict[str, Any], new: Dict[str, Any]) -> Dict[str, Any]:
+def check_company_duplicate(db_session, company_name: str, min_score: int = 85) -> Optional[Dict[str, Any]]:
     """
-    Merge two property dictionaries, with newer values taking precedence.
+    Check if a company with a similar name already exists.
     
     Args:
-        existing: Existing properties
-        new: New properties
+        db_session: Database session
+        company_name: Company name to check
+        min_score: Minimum score for a match (0-100)
         
     Returns:
-        Merged properties
+        Dictionary with entity ID and match score if found, None otherwise
     """
-    result = {**existing}
-    
-    for key, value in new.items():
-        # Don't overwrite with empty values
-        if value is not None and value != "":
-            result[key] = value
-    
-    return result
+    normalized_name = normalize_company_name(company_name)
+    return fuzzy_match_entity(db_session, "company", normalized_name, min_score)
