@@ -7,12 +7,22 @@ datasources:
     url: http://prometheus:9090
     isDefault: true
     editable: false
-    jsonData:
-      timeInterval: "15s"
-      
+
   - name: Jaeger
     type: jaeger
     access: proxy
     url: http://jaeger:16686
-    uid: jaeger
+    editable: false
+
+  - name: PostgreSQL
+    type: postgres
+    url: ${PGHOST}:${PGPORT}
+    database: ${PGDATABASE}
+    user: ${PGUSER}
+    secureJsonData:
+      password: ${PGPASSWORD}
+    jsonData:
+      sslmode: 'disable'
+      postgresVersion: 1600
+      timescaledb: false
     editable: false
