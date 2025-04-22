@@ -7,6 +7,8 @@ according to the crontab schedule.
 import os
 import time
 import json
+import sys
+import logging
 from typing import Dict, Any, List
 from datetime import datetime
 
@@ -14,8 +16,13 @@ import httpx
 
 from celery_app import app, track_task_metrics
 
+# Set up logger
+logger = logging.getLogger(__name__)
+
 # Environment variables
 GRAPH_INGEST_API_URL = os.environ.get("GRAPH_INGEST_API_URL", "http://localhost:8080")
+BACKEND_API_URL = os.environ.get("BACKEND_API_URL", "http://localhost:8000")
+COMPLIANCE_API_URL = os.environ.get("COMPLIANCE_API_URL", "http://localhost:8050")
 
 
 @app.task(bind=True, name="services.scheduler.tasks.ingest_github")
@@ -253,5 +260,59 @@ Raw JSON data is available at `/api/dataroom/{company_id}/data`
             "task": "build_dataroom",
             "status": "error",
             "company_id": company_id,
+            "error": str(e)
+        }
+
+
+@app.task(bind=True, name="services.scheduler.tasks.update_ofac_sanctions")
+@track_task_metrics
+def update_ofac_sanctions(self) -> Dict[str, Any]:
+    """
+    Task to update the OFAC sanctions list.
+    
+    This task:
+    1. Fetches the latest SDN list from treasury.gov
+    2. Processes the data and updates the cache
+    3. Records the update timestamp
+    
+    Returns:
+        Dictionary with update results
+    """
+    self.logger.info("Scheduled update of OFAC sanctions list started")
+    
+    try:
+        # Try to import the necessary module
+        try:
+            from libs.compliance import sanctions
+        except ImportError:
+            # If the direct import fails, try to add the root directory to the path
+            import sys
+            from pathlib import Path
+            root_dir = Path(__file__).parent.parent.parent.parent  # Go up four levels to the root
+            sys.path.append(str(root_dir))
+            from libs.compliance import sanctions
+        
+        # Trigger the sanctions cache update
+        sanctions._update_sanctions_cache()
+        
+        # Get the updated sanctions list info
+        sanctions_info = sanctions.get_latest_sanctions_list()
+        
+        return {
+            "task": "update_ofac_sanctions",
+            "status": "success",
+            "updated_at": datetime.now().isoformat(),
+            "sanctions_lists": sanctions_info
+        }
+    
+    except Exception as e:
+        self.logger.error(f"Error updating OFAC sanctions list: {str(e)}")
+        
+        # Retry with exponential backoff if it's a temporary issue
+        self.retry(exc=e, countdown=60 * 30, max_retries=3)  # Retry after 30 minutes
+        
+        return {
+            "task": "update_ofac_sanctions",
+            "status": "error",
             "error": str(e)
         }

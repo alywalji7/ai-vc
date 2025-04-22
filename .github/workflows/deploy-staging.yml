@@ -202,6 +202,15 @@ jobs:
           envsubst < secrets.yaml > secrets-filled.yaml
           envsubst < deployments.yaml > deployments-filled.yaml
           envsubst < ingress.yaml > ingress-filled.yaml
+          envsubst < cert-manager.yaml > cert-manager-filled.yaml
+          
+          # Install Nginx Ingress Controller
+          kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.10.0/deploy/static/provider/cloud/deploy.yaml
+          
+          # Install cert-manager for HTTPS/TLS
+          kubectl apply -f https://github.com/cert-manager/cert-manager/releases/download/v1.14.4/cert-manager.yaml
+          kubectl wait --for=condition=ready pod -l app=cert-manager --namespace cert-manager --timeout=300s
+          kubectl wait --for=condition=ready pod -l app=webhook --namespace cert-manager --timeout=300s
           
           # Apply manifests in order
           kubectl apply -f namespaces.yaml
@@ -210,6 +219,10 @@ jobs:
           kubectl apply -f secrets-filled.yaml
           kubectl apply -f deployments-filled.yaml
           kubectl apply -f services.yaml
+          
+          # Apply cert-manager and ingress resources after cert-manager is ready
+          kubectl apply -f cert-manager-filled.yaml
+          sleep 10 # Give cert-manager a moment to register the ClusterIssuer
           kubectl apply -f ingress-filled.yaml
           
           # Wait for deployments to be ready

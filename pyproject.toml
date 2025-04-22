@@ -57,6 +57,7 @@ boto3 = "^1.37.38"
 thefuzz = "^0.22.1"
 python-levenshtein = "^0.27.1"
 kubernetes = "^32.0.1"
+plaid-python = "^30.0.0"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"

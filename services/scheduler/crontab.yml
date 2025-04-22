@@ -42,6 +42,15 @@ tasks:
     args: ["vercel"]
     enabled: true
 
+  # Compliance tasks
+  update_ofac_sanctions:
+    name: Update OFAC Sanctions List
+    description: Fetches the latest OFAC SDN list from treasury.gov and updates the cache
+    cron: "0 3 * * *"  # Once a day at 3 AM
+    task: tasks.update_ofac_sanctions
+    args: []  # No arguments needed
+    enabled: true
+
   # Data cleanup task
   cleanup_old_data:
     name: Clean Up Old Data

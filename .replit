@@ -56,6 +56,10 @@ args = "Documentation Dev Server"
 task = "workflow.run"
 args = "Documentation Server"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Beta Feedback Service"
+
 [[workflows.workflow]]
 name = "Frontend Service"
 author = "agent"
@@ -220,6 +224,21 @@ task = "packager.installForAll"
 task = "shell.exec"
 args = "npx markserv docs"
 
+[[workflows.workflow]]
+name = "Beta Feedback Service"
+author = "agent"
+
+[workflows.workflow.metadata]
+agentRequireRestartOnSave = false
+
+[[workflows.workflow.tasks]]
+task = "packager.installForAll"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd services/beta_feedback && pip install -r requirements.txt && python main.py"
+waitForPort = 8200
+
 [deployment]
 run = ["sh", "-c", "cd services/frontend && npm install && npm run dev -- -p 5000"]
 
@@ -270,6 +289,10 @@ externalPort = 4200
 [[ports]]
 localPort = 8100
 externalPort = 6000
+
+[[ports]]
+localPort = 8200
+externalPort = 8099
 
 [[ports]]
 localPort = 9090
