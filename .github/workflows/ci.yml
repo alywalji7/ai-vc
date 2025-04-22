@@ -35,14 +35,36 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install pytest
+          pip install pytest pytest-xdist
+          pip install kubernetes
           pip install -r requirements.txt
       
       - name: Run backend tests
         run: |
-          python -m pytest -q services/*/tests/
+          python -m pytest -q services/*/tests/ tests/
         env:
           DATABASE_URL: postgresql://testuser:testpassword@localhost:5432/testdb
+          
+  integration-tests:
+    runs-on: ubuntu-latest
+    needs: [backend-tests]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest kubernetes
+          pip install -r requirements.txt
+      
+      - name: Run integration tests (including k8s checks)
+        run: |
+          python -m pytest tests/test_compliance_integration.py tests/test_k8s_services.py -v
   
   frontend-tests:
     runs-on: ubuntu-latest
@@ -67,7 +89,7 @@ jobs:
   
   e2e-tests:
     runs-on: ubuntu-latest
-    needs: [backend-tests, frontend-tests]
+    needs: [backend-tests, frontend-tests, integration-tests]
     services:
       postgres:
         image: postgres:16

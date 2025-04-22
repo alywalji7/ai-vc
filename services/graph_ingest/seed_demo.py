@@ -216,27 +216,27 @@ SAMPLE_REPOSITORIES = [
 
 # Define relationships between entities
 SAMPLE_RELATIONSHIPS = [
-    # People to companies
-    {"source_type": "person", "source_name": "Alex Rodriguez", "target_type": "company", "target_name": "TechFusion", "relationship_type": "works_at", "properties": {"title": "CEO", "start_date": "2021-03-15"}},
-    {"source_type": "person", "source_name": "Samantha Lee", "target_type": "company", "target_name": "TechFusion", "relationship_type": "works_at", "properties": {"title": "CTO", "start_date": "2021-04-10"}},
-    {"source_type": "person", "source_name": "Michael Chen", "target_type": "company", "target_name": "QuantumLeap", "relationship_type": "works_at", "properties": {"title": "Lead Researcher", "start_date": "2019-08-01"}},
-    {"source_type": "person", "source_name": "Priya Patel", "target_type": "company", "target_name": "BlockMatrix", "relationship_type": "works_at", "properties": {"title": "VP of Product", "start_date": "2020-01-15"}},
+    # People to companies - using works_for instead of works_at to match RelationshipType enum
+    {"source_type": "person", "source_name": "Alex Rodriguez", "target_type": "company", "target_name": "TechFusion", "relationship_type": "works_for", "properties": {"title": "CEO", "start_date": "2021-03-15"}},
+    {"source_type": "person", "source_name": "Samantha Lee", "target_type": "company", "target_name": "TechFusion", "relationship_type": "works_for", "properties": {"title": "CTO", "start_date": "2021-04-10"}},
+    {"source_type": "person", "source_name": "Michael Chen", "target_type": "company", "target_name": "QuantumLeap", "relationship_type": "works_for", "properties": {"title": "Lead Researcher", "start_date": "2019-08-01"}},
+    {"source_type": "person", "source_name": "Priya Patel", "target_type": "company", "target_name": "BlockMatrix", "relationship_type": "works_for", "properties": {"title": "VP of Product", "start_date": "2020-01-15"}},
     {"source_type": "person", "source_name": "Alex Rodriguez", "target_type": "company", "target_name": "TechFusion", "relationship_type": "founded", "properties": {"date": "2021-03-15"}},
     {"source_type": "person", "source_name": "Samantha Lee", "target_type": "company", "target_name": "TechFusion", "relationship_type": "founded", "properties": {"date": "2021-03-15"}},
     {"source_type": "person", "source_name": "Michael Chen", "target_type": "company", "target_name": "QuantumLeap", "relationship_type": "founded", "properties": {"date": "2019-07-22"}},
     
-    # Investors to companies
-    {"source_type": "investor", "source_name": "Sequoia Capital", "target_type": "company", "target_name": "TechFusion", "relationship_type": "invested_in", "properties": {"amount_usd": 5000000, "date": "2022-02-10", "round": "Series A"}},
-    {"source_type": "investor", "source_name": "Andreessen Horowitz", "target_type": "company", "target_name": "TechFusion", "relationship_type": "invested_in", "properties": {"amount_usd": 7000000, "date": "2022-02-10", "round": "Series A"}},
-    {"source_type": "investor", "source_name": "Y Combinator", "target_type": "company", "target_name": "QuantumLeap", "relationship_type": "invested_in", "properties": {"amount_usd": 500000, "date": "2019-12-15", "round": "Seed"}},
-    {"source_type": "investor", "source_name": "Sequoia Capital", "target_type": "company", "target_name": "QuantumLeap", "relationship_type": "invested_in", "properties": {"amount_usd": 8000000, "date": "2020-08-22", "round": "Series A"}},
-    {"source_type": "investor", "source_name": "Andreessen Horowitz", "target_type": "company", "target_name": "BlockMatrix", "relationship_type": "invested_in", "properties": {"amount_usd": 12000000, "date": "2019-06-30", "round": "Series A"}},
-    {"source_type": "investor", "source_name": "Sequoia Capital", "target_type": "company", "target_name": "BlockMatrix", "relationship_type": "invested_in", "properties": {"amount_usd": 10000000, "date": "2019-06-30", "round": "Series A"}},
+    # Companies funded by investors - using funded_by instead of invested_in and inverting source/target
+    {"source_type": "company", "source_name": "TechFusion", "target_type": "investor", "target_name": "Sequoia Capital", "relationship_type": "funded_by", "properties": {"amount_usd": 5000000, "date": "2022-02-10", "round": "Series A"}},
+    {"source_type": "company", "source_name": "TechFusion", "target_type": "investor", "target_name": "Andreessen Horowitz", "relationship_type": "funded_by", "properties": {"amount_usd": 7000000, "date": "2022-02-10", "round": "Series A"}},
+    {"source_type": "company", "source_name": "QuantumLeap", "target_type": "investor", "target_name": "Y Combinator", "relationship_type": "funded_by", "properties": {"amount_usd": 500000, "date": "2019-12-15", "round": "Seed"}},
+    {"source_type": "company", "source_name": "QuantumLeap", "target_type": "investor", "target_name": "Sequoia Capital", "relationship_type": "funded_by", "properties": {"amount_usd": 8000000, "date": "2020-08-22", "round": "Series A"}},
+    {"source_type": "company", "source_name": "BlockMatrix", "target_type": "investor", "target_name": "Andreessen Horowitz", "relationship_type": "funded_by", "properties": {"amount_usd": 12000000, "date": "2019-06-30", "round": "Series A"}},
+    {"source_type": "company", "source_name": "BlockMatrix", "target_type": "investor", "target_name": "Sequoia Capital", "relationship_type": "funded_by", "properties": {"amount_usd": 10000000, "date": "2019-06-30", "round": "Series B"}},
     
-    # Companies to repositories
-    {"source_type": "company", "source_name": "TechFusion", "target_type": "repository", "target_name": "techfusion/ai-engine", "relationship_type": "developed", "properties": {}},
-    {"source_type": "company", "source_name": "QuantumLeap", "target_type": "repository", "target_name": "quantum-leap/qcomp", "relationship_type": "developed", "properties": {}},
-    {"source_type": "company", "source_name": "BlockMatrix", "target_type": "repository", "target_name": "blockmatrix/secure-chain", "relationship_type": "developed", "properties": {}},
+    # Companies to repositories - using owns instead of developed to match RelationshipType enum
+    {"source_type": "company", "source_name": "TechFusion", "target_type": "repository", "target_name": "techfusion/ai-engine", "relationship_type": "owns", "properties": {"since": "2021-05-12"}},
+    {"source_type": "company", "source_name": "QuantumLeap", "target_type": "repository", "target_name": "quantum-leap/qcomp", "relationship_type": "owns", "properties": {"since": "2020-01-18"}},
+    {"source_type": "company", "source_name": "BlockMatrix", "target_type": "repository", "target_name": "blockmatrix/secure-chain", "relationship_type": "owns", "properties": {"since": "2019-08-27"}},
     
     # People to repositories
     {"source_type": "person", "source_name": "Samantha Lee", "target_type": "repository", "target_name": "techfusion/ai-engine", "relationship_type": "contributed_to", "properties": {"contributions": 245}},
@@ -260,14 +260,35 @@ def create_sample_entity(db_session: Session, entity_data: Dict[str, Any]) -> in
     properties = entity_data.get("properties", {})
     
     try:
-        entity = db_module.insert_entity(db_session, entity_type, name, properties)
+        # Create a unique ID for the entity
+        entity_id = f"{entity_type}_{name.lower().replace(' ', '_')}"
+        
+        # Create the BaseEntity object
+        from app.models.base import BaseEntity, EntityType, SourceType
+        
+        # Convert string entity_type to EntityType enum
+        entity_type_enum = EntityType(entity_type)
+        
+        # Using a fixed source type for demo data
+        source_type = SourceType.CRUNCHBASE
+        
+        entity_obj = BaseEntity(
+            id=entity_id,
+            type=entity_type_enum,
+            source=source_type,
+            source_id=entity_id,  # Using same ID as source_id for demo
+            name=name,
+            properties=properties
+        )
+        
+        entity = db_module.insert_entity(db_session, entity_obj)
         logger.info(f"Created {entity_type} entity: {name} (ID: {entity.id})")
         return entity.id
     except Exception as e:
         logger.error(f"Error creating entity {entity_type}/{name}: {e}")
         return 0  # Return 0 instead of None for type safety
 
-def create_sample_relationship(db_session: Session, relationship_data: Dict[str, Any], entity_map: Dict[str, Dict[str, int]]):
+def create_sample_relationship(db_session: Session, relationship_data: Dict[str, Any], entity_map: Dict[str, Dict[str, str]]):
     """
     Create a sample relationship in the database.
     
@@ -292,13 +313,28 @@ def create_sample_relationship(db_session: Session, relationship_data: Dict[str,
         return
     
     try:
-        relationship = db_module.insert_relationship(
-            db_session, 
-            source_id, 
-            target_id, 
-            relationship_type, 
-            properties
+        # Create a unique ID for the relationship
+        rel_id = f"{source_id}_{relationship_type}_{target_id}"
+        
+        # Create the BaseRelationship object
+        from app.models.base import BaseRelationship, RelationshipType, SourceType
+        
+        # Convert string relationship_type to RelationshipType enum
+        rel_type_enum = RelationshipType(relationship_type)
+        
+        # Using a fixed source type for demo data
+        source_type_enum = SourceType.CRUNCHBASE
+        
+        rel_obj = BaseRelationship(
+            id=rel_id,
+            type=rel_type_enum,
+            source=source_type_enum,
+            from_entity_id=source_id,
+            to_entity_id=target_id,
+            properties=properties
         )
+        
+        relationship = db_module.insert_relationship(db_session, rel_obj)
         logger.info(f"Created relationship: ({source_name}) --[{relationship_type}]--> ({target_name}) (ID: {relationship.id})")
     except Exception as e:
         logger.error(f"Error creating relationship {source_name} --[{relationship_type}]--> {target_name}: {e}")

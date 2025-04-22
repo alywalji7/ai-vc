@@ -129,16 +129,16 @@ def calculate_entity_counts(db_session) -> Dict[str, int]:
     try:
         # Check if the table exists first
         result = db_session.execute(
-            sa.text("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'entities')")
+            sa.text("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'knowledge_graph_entities')")
         )
         table_exists = result.scalar()
         
         if not table_exists:
-            logger.warning("Table 'entities' does not exist yet")
+            logger.warning("Table 'knowledge_graph_entities' does not exist yet")
             return {}
             
         result = db_session.execute(
-            sa.text("SELECT type, COUNT(*) FROM entities GROUP BY type")
+            sa.text("SELECT type, COUNT(*) FROM knowledge_graph_entities GROUP BY type")
         )
         
         counts = {}
@@ -168,16 +168,16 @@ def calculate_relationship_counts(db_session) -> Dict[str, int]:
     try:
         # Check if the table exists first
         result = db_session.execute(
-            sa.text("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'relationships')")
+            sa.text("SELECT EXISTS (SELECT FROM information_schema.tables WHERE table_name = 'knowledge_graph_relationships')")
         )
         table_exists = result.scalar()
         
         if not table_exists:
-            logger.warning("Table 'relationships' does not exist yet")
+            logger.warning("Table 'knowledge_graph_relationships' does not exist yet")
             return {}
             
         result = db_session.execute(
-            sa.text("SELECT type, COUNT(*) FROM relationships GROUP BY type")
+            sa.text("SELECT type, COUNT(*) FROM knowledge_graph_relationships GROUP BY type")
         )
         
         counts = {}

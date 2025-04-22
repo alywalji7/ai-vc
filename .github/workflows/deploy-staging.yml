@@ -61,10 +61,18 @@ jobs:
         uses: pulumi/setup-pulumi@v2
         
       - name: Pulumi preview
+        id: pulumi-preview
         run: |
           cd infra/pulumi
           pulumi stack select ${{ env.PULUMI_STACK }}
-          pulumi preview --non-interactive
+          PREVIEW_OUTPUT=$(pulumi preview --non-interactive)
+          echo "$PREVIEW_OUTPUT"
+          
+          # Fail if the preview output contains "update" or "create"
+          if echo "$PREVIEW_OUTPUT" | grep -E 'update|create'; then
+            echo "::error::Pulumi preview indicates updates or creations - manual approval required"
+            exit 1
+          fi
 
   deploy:
     name: Deploy
@@ -208,6 +216,12 @@ jobs:
           kubectl rollout status deployment/frontend -n aivc --timeout=300s
           kubectl rollout status deployment/backend -n aivc --timeout=300s
           
+      - name: Run Kubernetes service tests
+        run: |
+          pip install kubernetes pytest
+          export K8S_NAMESPACE=aivc
+          python -m pytest tests/test_k8s_services.py -v
+          
       - name: Notify deployment status
         uses: slackapi/slack-github-action@v1.24.0
         with:
@@ -248,6 +262,13 @@ jobs:
                   "text": {
                     "type": "mrkdwn",
                     "text": "*Endpoints:*\n• Grafana: ${{ env.GRAFANA_ENDPOINT }}\n• RDS: ${{ env.RDS_ENDPOINT }}\n• Redis: ${{ env.REDIS_ENDPOINT }}"
+                  }
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Kubernetes Tests:*\nAll services verified ✅"
                   }
                 },
                 {
