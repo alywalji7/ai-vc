@@ -1,0 +1,127 @@
+groups:
+  - name: aws_cost_alerts
+    rules:
+      - alert: HighAWSDailySpend
+        expr: aws_cost_daily_usd > 100
+        for: 1h
+        labels:
+          severity: warning
+          category: finops
+        annotations:
+          summary: "High AWS daily spend detected"
+          description: "Daily AWS spend is {{ $value | printf \"%.2f\" }} USD, which is above the threshold of 100 USD."
+          dashboard_url: "https://grafana.aivc.io/d/cost-quota"
+
+      - alert: MonthlyAWSBudgetExceeding
+        expr: aws_budget_percent > 80
+        for: 1h
+        labels:
+          severity: warning
+          category: finops
+        annotations:
+          summary: "Monthly AWS budget threshold exceeded"
+          description: "Current AWS spend is at {{ $value | printf \"%.1f\" }}% of the monthly budget."
+          dashboard_url: "https://grafana.aivc.io/d/cost-quota"
+
+      - alert: MonthlyAWSBudgetCritical
+        expr: aws_budget_percent > 95
+        for: 1h
+        labels:
+          severity: critical
+          category: finops
+        annotations:
+          summary: "Monthly AWS budget critically high"
+          description: "Current AWS spend is at {{ $value | printf \"%.1f\" }}% of the monthly budget. Immediate action required."
+          dashboard_url: "https://grafana.aivc.io/d/cost-quota"
+
+      - alert: AWSForecastExceedsLimit
+        expr: aws_cost_forecast_usd > 1000
+        for: 1h
+        labels:
+          severity: warning
+          category: finops
+        annotations:
+          summary: "AWS forecast exceeds budget limit"
+          description: "AWS forecasted spend of {{ $value | printf \"%.2f\" }} USD exceeds the monthly budget of 1000 USD."
+          dashboard_url: "https://grafana.aivc.io/d/cost-quota"
+
+  - name: openai_cost_alerts
+    rules:
+      - alert: HighOpenAIDailyTokens
+        expr: sum(openai_daily_tokens) > 500000
+        for: 1h
+        labels:
+          severity: warning
+          category: finops
+        annotations:
+          summary: "High OpenAI daily token usage"
+          description: "Daily OpenAI token usage is {{ $value | printf \"%.0f\" }}, which is above the threshold of 500,000 tokens."
+          dashboard_url: "https://grafana.aivc.io/d/cost-quota"
+
+      - alert: OpenAIQuotaExceeding
+        expr: openai_quota_percent > 80
+        for: 1h
+        labels:
+          severity: warning
+          category: finops
+        annotations:
+          summary: "OpenAI quota threshold exceeded"
+          description: "Current OpenAI spend is at {{ $value | printf \"%.1f\" }}% of the monthly quota."
+          dashboard_url: "https://grafana.aivc.io/d/cost-quota"
+
+      - alert: OpenAIQuotaCritical
+        expr: openai_quota_percent > 95
+        for: 1h
+        labels:
+          severity: critical
+          category: finops
+        annotations:
+          summary: "OpenAI quota critically high"
+          description: "Current OpenAI spend is at {{ $value | printf \"%.1f\" }}% of the monthly quota. Immediate action required."
+          dashboard_url: "https://grafana.aivc.io/d/cost-quota"
+
+      - alert: HighGPT4oUsage
+        expr: sum(openai_total_cost_usd{model=~"gpt-4o.*"}) > 50
+        for: 1h
+        labels:
+          severity: warning
+          category: finops
+        annotations:
+          summary: "High GPT-4o usage detected"
+          description: "GPT-4o usage cost is {{ $value | printf \"%.2f\" }} USD, which is above the threshold of 50 USD."
+          dashboard_url: "https://grafana.aivc.io/d/cost-quota"
+
+  - name: service_performance_alerts
+    rules:
+      - alert: HighLatencyService
+        expr: sum by(job) (rate(http_request_duration_seconds_sum[5m])) / sum by(job) (rate(http_request_duration_seconds_count[5m])) > 1
+        for: 5m
+        labels:
+          severity: warning
+          category: performance
+        annotations:
+          summary: "High latency detected in {{ $labels.job }}"
+          description: "Average response time is {{ $value | printf \"%.2f\" }} seconds over the last 5 minutes, which is above the threshold of 1 second."
+          dashboard_url: "https://grafana.aivc.io/d/cost-quota"
+
+      - alert: HighErrorRate
+        expr: sum by(job) (rate(http_requests_total{status=~"5.."}[5m])) / sum by(job) (rate(http_requests_total[5m])) > 0.05
+        for: 5m
+        labels:
+          severity: warning
+          category: performance
+        annotations:
+          summary: "High error rate detected in {{ $labels.job }}"
+          description: "Error rate is {{ $value | printf \"%.1f\" }}% over the last 5 minutes, which is above the threshold of 5%."
+          dashboard_url: "https://grafana.aivc.io/d/cost-quota"
+
+      - alert: OpenAIRequestLatencyCritical
+        expr: rate(openai_request_latency_seconds_sum[5m]) / rate(openai_request_latency_seconds_count[5m]) > 3
+        for: 5m
+        labels:
+          severity: critical
+          category: performance
+        annotations:
+          summary: "Critical OpenAI API latency detected"
+          description: "OpenAI API response time for {{ $labels.endpoint }} is {{ $value | printf \"%.2f\" }} seconds over the last 5 minutes, which is above the threshold of 3 seconds."
+          dashboard_url: "https://grafana.aivc.io/d/cost-quota"
