@@ -2,84 +2,56 @@ global:
   scrape_interval: 15s
   evaluation_interval: 15s
 
-# Load alert rules
-rule_files:
-  - "rules/alerts.yml"
-
-# Alertmanager configuration
 alerting:
   alertmanagers:
     - static_configs:
         - targets:
-          - alertmanager:9093
+            - alertmanager:9093
 
-# Scrape configurations
+rule_files:
+  - 'rules/alerts.yml'
+
 scrape_configs:
-  # Backend Service
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
   - job_name: 'backend'
     metrics_path: '/metrics'
     static_configs:
       - targets: ['backend:8000']
-        labels:
-          service: 'backend'
 
-  # Radar Service
   - job_name: 'radar'
     metrics_path: '/metrics'
     static_configs:
       - targets: ['radar:8050']
-        labels:
-          service: 'radar'
 
-  # Similarity API Service
-  - job_name: 'similarity-api'
+  - job_name: 'ic_simulator'
     metrics_path: '/metrics'
     static_configs:
-      - targets: ['similarity-api:8090']
-        labels:
-          service: 'similarity-api'
+      - targets: ['ic_simulator:8060']
 
-  # IC Simulator Service
-  - job_name: 'ic-simulator'
+  - job_name: 'term_sheet'
     metrics_path: '/metrics'
     static_configs:
-      - targets: ['ic-simulator:8060']
-        labels:
-          service: 'ic-simulator'
+      - targets: ['term_sheet:8070']
 
-  # Term Sheet Service
-  - job_name: 'term-sheet'
+  - job_name: 'graph_ingest'
     metrics_path: '/metrics'
     static_configs:
-      - targets: ['term-sheet:8070']
-        labels:
-          service: 'term-sheet'
+      - targets: ['graph_ingest:8080']
 
-  # Telemetry Service
-  - job_name: 'telemetry'
+  - job_name: 'similarity_api'
     metrics_path: '/metrics'
     static_configs:
-      - targets: ['telemetry:8100']
-        labels:
-          service: 'telemetry'
+      - targets: ['similarity_api:8090']
 
-  # Graph Ingest Service
-  - job_name: 'graph-ingest'
-    metrics_path: '/metrics'
-    static_configs:
-      - targets: ['graph-ingest:8080']
-        labels:
-          service: 'graph-ingest'
-
-  # Scheduler Service
   - job_name: 'scheduler'
     metrics_path: '/metrics'
     static_configs:
       - targets: ['scheduler:8085']
-        labels:
-          service: 'scheduler'
 
-  # Prometheus self-monitoring
-  - job_name: 'prometheus'
+  - job_name: 'telemetry'
+    metrics_path: '/metrics'
     static_configs:
-      - targets: ['localhost:9090']
+      - targets: ['telemetry:8100']

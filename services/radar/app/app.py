@@ -20,7 +20,17 @@ except ImportError as e:
     logging.warning(f"Cost guardrails module not found. Cost monitoring disabled. Error: {str(e)}")
     COST_GUARDRAILS_ENABLED = False
 
-from .database import create_tables
+# Import observability components
+try:
+    from .observability import setup_observability
+    OBSERVABILITY_ENABLED = True
+    logging.info("Observability module loaded successfully.")
+except ImportError as e:
+    # Fallback if imports fail
+    logging.warning(f"Observability module not found. Metrics and tracing disabled. Error: {str(e)}")
+    OBSERVABILITY_ENABLED = False
+
+from .database import create_tables, get_engine
 from .routes.api import router as api_router
 
 # Set up logging
@@ -71,6 +81,21 @@ def create_app() -> FastAPI:
         app.add_middleware(create_cost_guardrail_middleware())
         logger.info("Cost guardrails middleware and monitoring API registered")
     
+    # Set up observability if available
+    if OBSERVABILITY_ENABLED:
+        try:
+            db_engine = get_engine()
+            setup_observability(
+                app=app,
+                db_engine=db_engine,
+                service_name="radar",
+                enable_tracing=True,
+                enable_metrics=True,
+            )
+            logger.info("Observability middleware and tracing configured")
+        except Exception as e:
+            logger.warning(f"Failed to set up observability: {str(e)}")
+    
     # Create default route
     @app.get("/", tags=["Status"])
     async def root():
@@ -97,6 +122,12 @@ def create_app() -> FastAPI:
                     "gpu_usage": "/metrics/gpu-usage",
                     "current_gpu": "/metrics/current-gpu",
                 })
+        
+        # Add Prometheus metrics endpoint if observability is enabled
+        if OBSERVABILITY_ENABLED:
+            endpoints.update({
+                "prometheus_metrics": "/metrics",
+            })
         
         return {
             "service": "Deal-Flow Radar",

@@ -182,6 +182,17 @@ def create_tables():
     Base.metadata.create_all(bind=engine)
 
 
+# Function to get SQLAlchemy engine
+def get_engine():
+    """
+    Get the SQLAlchemy engine.
+    
+    Returns:
+        Engine: SQLAlchemy engine instance
+    """
+    return engine
+
+
 # Dependency to get DB session
 def get_db():
     """
