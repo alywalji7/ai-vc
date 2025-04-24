@@ -1,0 +1,352 @@
+name: Deploy to Production
+
+# Required secrets for this workflow:
+# AWS_ACCESS_KEY_ID: AWS access key for deployment
+# AWS_SECRET_ACCESS_KEY: AWS secret key for deployment
+# PULUMI_ACCESS_TOKEN: Pulumi access token
+# SLACK_WEBHOOK_URL: Slack webhook URL for notifications
+# PROD_DATABASE_URL: PostgreSQL connection string
+# PROD_QDRANT_URL: Qdrant vector database URL
+# OPENAI_API_KEY: OpenAI API key for NLP capabilities
+# SENDGRID_API_KEY: SendGrid API key for email notifications
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      force_deploy:
+        description: 'Force deployment even if there are no changes'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      traffic_percentage:
+        description: 'Percentage of traffic to shift to green deployment (0-100)'
+        required: false
+        default: '0'
+        type: number
+
+env:
+  AWS_REGION: us-west-2
+  PULUMI_STACK: prod
+  DOMAIN_NAME: aivc-platform.com
+  ECR_REPOSITORY_URL: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com
+
+jobs:
+  validate:
+    name: Validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          cd infra/pulumi
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+          
+      - name: Install Pulumi CLI
+        uses: pulumi/setup-pulumi@v2
+        
+      - name: Pulumi preview
+        id: pulumi-preview
+        run: |
+          cd infra/pulumi
+          pulumi stack select ${{ env.PULUMI_STACK }}
+          pulumi preview --non-interactive
+          
+  deploy:
+    name: Deploy
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+          
+      - name: Install dependencies
+        run: |
+          cd infra/pulumi
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v2
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+          
+      - name: Get AWS Account ID
+        id: aws-account
+        run: echo "AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)" >> $GITHUB_ENV
+          
+      - name: Install Pulumi CLI
+        uses: pulumi/setup-pulumi@v2
+        
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v1
+        
+      - name: Determine release version
+        id: release-version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/v* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/v}
+          else
+            VERSION=$(date +%Y%m%d%H%M%S)
+          fi
+          echo "RELEASE_VERSION=$VERSION" >> $GITHUB_ENV
+          
+      - name: Build and push Docker images
+        run: |
+          # Set up variables
+          REPOSITORY_URL=$AWS_ACCOUNT_ID.dkr.ecr.$AWS_REGION.amazonaws.com
+          VERSION=${{ env.RELEASE_VERSION }}
+          
+          # Create ECR repositories if they don't exist
+          for service in frontend backend radar similarity_api graph_ingest ic_sim term_sheet telemetry scheduler; do
+            aws ecr describe-repositories --repository-names aivc-$service || aws ecr create-repository --repository-name aivc-$service
+          done
+          
+          # Build and push frontend
+          docker build -t $REPOSITORY_URL/aivc-frontend:$VERSION -f infra/docker/frontend.Dockerfile .
+          docker push $REPOSITORY_URL/aivc-frontend:$VERSION
+          
+          # Build and push backend
+          docker build -t $REPOSITORY_URL/aivc-backend:$VERSION -f infra/docker/backend.Dockerfile .
+          docker push $REPOSITORY_URL/aivc-backend:$VERSION
+          
+          # Build and push radar
+          docker build -t $REPOSITORY_URL/aivc-radar:$VERSION -f infra/docker/radar.Dockerfile .
+          docker push $REPOSITORY_URL/aivc-radar:$VERSION
+          
+          # Build and push similarity_api
+          docker build -t $REPOSITORY_URL/aivc-similarity-api:$VERSION -f infra/docker/similarity_api.Dockerfile .
+          docker push $REPOSITORY_URL/aivc-similarity-api:$VERSION
+          
+          # Build and push other services using the template
+          for service in graph_ingest ic_sim term_sheet telemetry scheduler; do
+            case $service in
+              graph_ingest) PORT=8080 ;;
+              ic_sim) PORT=8060 ;;
+              term_sheet) PORT=8070 ;;
+              telemetry) PORT=8100 ;;
+              scheduler) PORT=8085 ;;
+            esac
+            
+            docker build -t $REPOSITORY_URL/aivc-$service:$VERSION \
+              --build-arg SERVICE_NAME=$service --build-arg PORT=$PORT \
+              -f infra/docker/python_service.Dockerfile .
+            docker push $REPOSITORY_URL/aivc-$service:$VERSION
+          done
+      
+      - name: Pulumi up
+        run: |
+          cd infra/pulumi
+          pulumi stack select ${{ env.PULUMI_STACK }}
+          pulumi up --yes
+          
+      - name: Extract infrastructure outputs
+        id: pulumi-outputs
+        run: |
+          cd infra/pulumi
+          echo "EKS_CLUSTER_NAME=$(pulumi stack output eks_cluster_name)" >> $GITHUB_ENV
+          echo "RDS_ENDPOINT=$(pulumi stack output rds_endpoint)" >> $GITHUB_ENV
+          echo "REDIS_ENDPOINT=$(pulumi stack output redis_endpoint)" >> $GITHUB_ENV
+          echo "S3_BUCKET_NAME=$(pulumi stack output s3_bucket_name)" >> $GITHUB_ENV
+          echo "GRAFANA_ENDPOINT=$(pulumi stack output grafana_endpoint)" >> $GITHUB_ENV
+          echo "ALB_DNS_NAME=$(pulumi stack output alb_dns_name || echo 'Not available')" >> $GITHUB_ENV
+          echo "FRONTEND_BLUE_TG_ARN=$(pulumi stack output frontend_blue_tg_arn || echo '')" >> $GITHUB_ENV
+          echo "FRONTEND_GREEN_TG_ARN=$(pulumi stack output frontend_green_tg_arn || echo '')" >> $GITHUB_ENV
+          echo "API_BLUE_TG_ARN=$(pulumi stack output api_blue_tg_arn || echo '')" >> $GITHUB_ENV
+          echo "API_GREEN_TG_ARN=$(pulumi stack output api_green_tg_arn || echo '')" >> $GITHUB_ENV
+          echo "FRONTEND_LISTENER_ARN=$(pulumi stack output frontend_listener_arn || echo '')" >> $GITHUB_ENV
+          echo "API_LISTENER_ARN=$(pulumi stack output api_listener_arn || echo '')" >> $GITHUB_ENV
+      
+      - name: Get ACM Certificate ARN
+        run: |
+          echo "ACM_CERTIFICATE_ARN=$(aws acm list-certificates --query "CertificateSummaryList[?DomainName=='*.${DOMAIN_NAME}'].CertificateArn | [0]" --output text)" >> $GITHUB_ENV
+      
+      - name: Prepare base64 encoded secrets
+        run: |
+          # For security, these secrets are stored in GitHub Secrets and base64 encoded for K8s
+          echo "DATABASE_URL_BASE64=$(echo -n ${{ secrets.PROD_DATABASE_URL }} | base64 -w 0)" >> $GITHUB_ENV
+          echo "QDRANT_URL_BASE64=$(echo -n ${{ secrets.PROD_QDRANT_URL }} | base64 -w 0)" >> $GITHUB_ENV
+          echo "OPENAI_API_KEY_BASE64=$(echo -n ${{ secrets.OPENAI_API_KEY }} | base64 -w 0)" >> $GITHUB_ENV
+          echo "SENDGRID_API_KEY_BASE64=$(echo -n ${{ secrets.SENDGRID_API_KEY }} | base64 -w 0)" >> $GITHUB_ENV
+          echo "SLACK_WEBHOOK_URL_BASE64=$(echo -n ${{ secrets.SLACK_WEBHOOK_URL }} | base64 -w 0)" >> $GITHUB_ENV
+          
+      - name: Configure kubectl
+        run: |
+          aws eks update-kubeconfig --region ${{ env.AWS_REGION }} --name ${{ env.EKS_CLUSTER_NAME }}
+          
+      - name: Deploy Kubernetes manifests
+        run: |
+          cd infra/k8s
+          
+          # Replace environment variables in manifests
+          envsubst < configmaps.yaml > configmaps-filled.yaml
+          envsubst < secrets.yaml > secrets-filled.yaml
+          envsubst < blue-green-deployments.yaml > blue-green-deployments-filled.yaml
+          envsubst < green-deployments.yaml > green-deployments-filled.yaml
+          
+          # Apply namespaces and common resources first
+          kubectl apply -f namespaces.yaml
+          kubectl apply -f prometheus-rbac.yaml
+          kubectl apply -f configmaps-filled.yaml
+          kubectl apply -f secrets-filled.yaml
+          
+          # Deploy blue and green resources
+          kubectl apply -f blue-green-deployments-filled.yaml
+          kubectl apply -f green-deployments-filled.yaml
+          
+          # Apply other service deployments
+          kubectl apply -f deployments.yaml
+          kubectl apply -f services.yaml
+          
+          # Wait for deployments to be ready
+          echo "Waiting for blue deployments to be ready..."
+          kubectl rollout status deployment/frontend-blue -n aivc --timeout=300s
+          kubectl rollout status deployment/backend-blue -n aivc --timeout=300s
+          
+          echo "Waiting for green deployments to be ready..."
+          kubectl rollout status deployment/frontend-green -n aivc --timeout=300s
+          kubectl rollout status deployment/backend-green -n aivc --timeout=300s
+      
+      - name: Perform traffic shift
+        run: |
+          # Get the desired traffic percentage (default to 0% if not specified)
+          TRAFFIC_PERCENTAGE=${{ github.event.inputs.traffic_percentage || 0 }}
+          
+          # Only shift traffic if specified and if it's a valid number between 0 and 100
+          if [[ "$TRAFFIC_PERCENTAGE" =~ ^[0-9]+$ ]] && [ $TRAFFIC_PERCENTAGE -ge 0 ] && [ $TRAFFIC_PERCENTAGE -le 100 ]; then
+            if [ $TRAFFIC_PERCENTAGE -gt 0 ]; then
+              echo "Shifting $TRAFFIC_PERCENTAGE% of traffic to green deployment"
+              
+              # Modify frontend listener rule for traffic distribution
+              aws elbv2 modify-listener --listener-arn $FRONTEND_LISTENER_ARN --default-actions \
+                Type=forward,ForwardConfig="{TargetGroups=[{TargetGroupArn=$FRONTEND_BLUE_TG_ARN,Weight=$((100-$TRAFFIC_PERCENTAGE))},{TargetGroupArn=$FRONTEND_GREEN_TG_ARN,Weight=$TRAFFIC_PERCENTAGE}]}"
+              
+              # Modify API listener rule for traffic distribution
+              RULE_ARN=$(aws elbv2 describe-rules --listener-arn $API_LISTENER_ARN --query "Rules[0].RuleArn" --output text)
+              aws elbv2 modify-rule --rule-arn $RULE_ARN --actions \
+                Type=forward,ForwardConfig="{TargetGroups=[{TargetGroupArn=$API_BLUE_TG_ARN,Weight=$((100-$TRAFFIC_PERCENTAGE))},{TargetGroupArn=$API_GREEN_TG_ARN,Weight=$TRAFFIC_PERCENTAGE}]}"
+                
+              # If traffic percentage is 100%, shift all traffic to green
+              if [ $TRAFFIC_PERCENTAGE -eq 100 ]; then
+                echo "Shifting 100% of traffic to green deployment"
+                aws elbv2 modify-listener --listener-arn $FRONTEND_LISTENER_ARN --default-actions Type=forward,TargetGroupArn=$FRONTEND_GREEN_TG_ARN
+                aws elbv2 modify-rule --rule-arn $RULE_ARN --actions Type=forward,TargetGroupArn=$API_GREEN_TG_ARN
+              fi
+            else
+              echo "Keeping 100% of traffic on blue deployment"
+              aws elbv2 modify-listener --listener-arn $FRONTEND_LISTENER_ARN --default-actions Type=forward,TargetGroupArn=$FRONTEND_BLUE_TG_ARN
+              RULE_ARN=$(aws elbv2 describe-rules --listener-arn $API_LISTENER_ARN --query "Rules[0].RuleArn" --output text)
+              aws elbv2 modify-rule --rule-arn $RULE_ARN --actions Type=forward,TargetGroupArn=$API_BLUE_TG_ARN
+            fi
+          else
+            echo "Invalid traffic percentage specified: $TRAFFIC_PERCENTAGE. Must be between 0 and 100."
+            exit 1
+          fi
+          
+      - name: Run Kubernetes service tests
+        run: |
+          pip install kubernetes pytest
+          export K8S_NAMESPACE=aivc
+          python -m pytest tests/test_k8s_services.py -v
+          
+      - name: Verify Pulumi state matches actual deployment
+        run: |
+          cd infra/pulumi
+          pulumi stack select ${{ env.PULUMI_STACK }}
+          DRIFT=$(pulumi refresh --skip-preview)
+          if echo "$DRIFT" | grep -i "error"; then
+            echo "Drift detected in Pulumi state, please review"
+            exit 1
+          else
+            echo "No drift detected in Pulumi state"
+          fi
+          
+      - name: Notify deployment status
+        uses: slackapi/slack-github-action@v1.24.0
+        with:
+          payload: |
+            {
+              "text": "Production deployment completed successfully!",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Production deployment completed!*"
+                  }
+                },
+                {
+                  "type": "section",
+                  "fields": [
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Status:*\nSuccess"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Environment:*\nProduction"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Version:*\n${{ env.RELEASE_VERSION }}"
+                    },
+                    {
+                      "type": "mrkdwn",
+                      "text": "*Traffic Split:*\nBlue ${{ 100 - github.event.inputs.traffic_percentage || 100 }}% / Green ${{ github.event.inputs.traffic_percentage || 0 }}%"
+                    }
+                  ]
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Endpoints:*\n• Frontend ALB: ${{ env.ALB_DNS_NAME }}\n• Main Domain: https://${{ env.DOMAIN_NAME }}\n• API: https://api.${{ env.DOMAIN_NAME }}"
+                  }
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Infrastructure:*\n• Grafana: ${{ env.GRAFANA_ENDPOINT }}\n• RDS: ${{ env.RDS_ENDPOINT }}\n• Redis: ${{ env.REDIS_ENDPOINT }}"
+                  }
+                },
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "*Workflow:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View workflow run>"
+                  }
+                }
+              ]
+            }
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
+          SLACK_WEBHOOK_TYPE: INCOMING_WEBHOOK

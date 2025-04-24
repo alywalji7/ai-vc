@@ -223,6 +223,7 @@ task = "packager.installForAll"
 [[workflows.workflow.tasks]]
 task = "shell.exec"
 args = "npx markserv docs"
+waitForPort = 8642
 
 [[workflows.workflow]]
 name = "Beta Feedback Service"
@@ -297,7 +298,3 @@ externalPort = 8099
 [[ports]]
 localPort = 9090
 externalPort = 3000
-
-[[ports]]
-localPort = 35729
-externalPort = 6800

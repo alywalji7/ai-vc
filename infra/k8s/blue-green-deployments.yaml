@@ -1,0 +1,142 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: frontend-blue
+  namespace: aivc
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: frontend
+      color: blue
+  template:
+    metadata:
+      labels:
+        app: frontend
+        color: blue
+    spec:
+      containers:
+      - name: frontend
+        image: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/aivc-frontend:latest
+        ports:
+        - containerPort: 5000
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "512Mi"
+        env:
+        - name: NODE_ENV
+          value: "production"
+        - name: NEXT_PUBLIC_API_URL
+          value: "https://api.${DOMAIN_NAME}"
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 5000
+          initialDelaySeconds: 10
+          periodSeconds: 3
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 5000
+          initialDelaySeconds: 20
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend-blue
+  namespace: aivc
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: backend
+      color: blue
+  template:
+    metadata:
+      labels:
+        app: backend
+        color: blue
+    spec:
+      containers:
+      - name: backend
+        image: ${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com/aivc-backend:latest
+        ports:
+        - containerPort: 8000
+        resources:
+          requests:
+            cpu: "200m"
+            memory: "256Mi"
+          limits:
+            cpu: "1000m"
+            memory: "1Gi"
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: db-credentials
+              key: database-url
+        - name: REDIS_URL
+          value: "redis://${REDIS_ENDPOINT}"
+        - name: OPENTELEMETRY_ENDPOINT
+          value: "http://jaeger-collector.observability:14268/api/traces"
+        - name: S3_ENDPOINT
+          value: "https://s3.${AWS_REGION}.amazonaws.com"
+        - name: S3_BUCKET_NAME
+          value: "${S3_BUCKET_NAME}"
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 15
+          periodSeconds: 5
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 15
+          timeoutSeconds: 5
+          failureThreshold: 3
+---
+# Services for blue deployments
+apiVersion: v1
+kind: Service
+metadata:
+  name: frontend-blue
+  namespace: aivc
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-target-group-attributes: "target-group-arn=${FRONTEND_BLUE_TG_ARN}"
+spec:
+  selector:
+    app: frontend
+    color: blue
+  ports:
+  - port: 80
+    targetPort: 5000
+  type: ClusterIP
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: backend-blue
+  namespace: aivc
+  annotations:
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"
+    service.beta.kubernetes.io/aws-load-balancer-target-group-attributes: "target-group-arn=${API_BLUE_TG_ARN}"
+spec:
+  selector:
+    app: backend
+    color: blue
+  ports:
+  - port: 80
+    targetPort: 8000
+  type: ClusterIP

@@ -89,7 +89,14 @@ def create_rds_instance(name, vpc, tags):
         tags=tags
     )
     
-    # Create an RDS instance
+    # Create an RDS instance with production-ready backup settings
+    is_production = tags.get("Environment") == "prod"
+    
+    # Configure more robust backup settings for production
+    backup_retention_period = 7  # 7-day retention for both staging and prod
+    backup_window = "03:00-05:00"  # UTC time window for backups (low traffic period)
+    maintenance_window = "sun:06:00-sun:08:00"  # UTC time window for maintenance
+    
     db_instance = aws.rds.Instance(
         name,
         allocated_storage=db_allocated_storage,
@@ -104,12 +111,18 @@ def create_rds_instance(name, vpc, tags):
         parameter_group_name=db_parameter_group.name,
         db_subnet_group_name=db_subnet_group.name,
         vpc_security_group_ids=[rds_sg.id],
-        skip_final_snapshot=True,  # Set to False in production
+        skip_final_snapshot=False,  # Never skip final snapshot in any environment
+        final_snapshot_identifier=f"{name}-final-{pulumi.Config().require('environment')}",
         multi_az=db_multi_az,
-        backup_retention_period=7,
-        deletion_protection=True,  # Set to True for production
+        backup_retention_period=backup_retention_period,
+        backup_window=backup_window,
+        maintenance_window=maintenance_window,
+        deletion_protection=True,  # Always true for both environments
         storage_encrypted=True,
         auto_minor_version_upgrade=True,
+        copy_tags_to_snapshot=True,  # Ensure all tags are copied to snapshots
+        performance_insights_enabled=True,  # Enable performance insights
+        performance_insights_retention_period=7,  # Retain performance data for 7 days
         publicly_accessible=False,
         tags={**tags, "Name": name}
     )

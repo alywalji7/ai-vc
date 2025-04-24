@@ -16,12 +16,17 @@ from rds import create_rds_instance
 from elasticache import create_redis_cluster
 from s3 import create_s3_bucket
 from grafana import create_grafana_workspace
+from deployments import create_blue_green_deployment
 
 # Load configuration
 config = Config()
 environment = config.require("environment")
 vpc_cidr = config.require("vpc_cidr")
 availability_zones = config.require_object("availability_zones")
+domain_name = config.require("domain_name")
+
+# Check if this is a production deployment
+is_production = environment == "prod"
 
 # Infrastructure tags
 tags = {
@@ -71,6 +76,23 @@ grafana_workspace = create_grafana_workspace(
     tags=tags
 )
 
+# Get SSL Certificate for domain
+ssl_certificate = aws.acm.get_certificate(domain=f"*.{domain_name}", most_recent=True)
+
+# Create blue/green deployment infrastructure if in production
+blue_green_deployment = None
+if is_production:
+    # Set certificate ARN in config for blue/green deployment
+    config.set("acm_certificate_arn", ssl_certificate.arn)
+    
+    # Create blue/green deployment resources
+    blue_green_deployment = create_blue_green_deployment(
+        environment=environment,
+        vpc=vpc,
+        eks_cluster=eks_cluster,
+        tags=tags
+    )
+
 # Export the relevant outputs
 export("vpc_id", vpc.vpc_id)
 export("eks_cluster_name", eks_cluster.cluster_name)
@@ -79,3 +101,13 @@ export("rds_endpoint", rds_instance.endpoint)
 export("redis_endpoint", redis_cluster.primary_endpoint)
 export("s3_bucket_name", s3_bucket.bucket)
 export("grafana_endpoint", grafana_workspace.endpoint)
+
+# Export blue/green deployment outputs if available
+if is_production and blue_green_deployment:
+    export("alb_dns_name", blue_green_deployment.alb_dns_name)
+    export("frontend_blue_tg_arn", blue_green_deployment.frontend_blue_tg_arn)
+    export("frontend_green_tg_arn", blue_green_deployment.frontend_green_tg_arn)
+    export("api_blue_tg_arn", blue_green_deployment.api_blue_tg_arn)
+    export("api_green_tg_arn", blue_green_deployment.api_green_tg_arn)
+    export("frontend_listener_arn", blue_green_deployment.frontend_listener_arn)
+    export("api_listener_arn", blue_green_deployment.api_listener_arn)
