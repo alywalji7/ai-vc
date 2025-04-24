@@ -23,6 +23,7 @@ class EntityType(str, Enum):
     FOUNDER = "founder"
     FUNDING_ROUND = "funding_round"
     PATENT = "patent"
+    FILING = "filing"
 
 
 class RelationshipType(str, Enum):
@@ -33,6 +34,8 @@ class RelationshipType(str, Enum):
     FOUNDED = "founded"
     PARTICIPATED_IN = "participated_in"
     AUTHORED = "authored"
+    FILED = "filed"
+    HOLDS = "holds"
 
 
 class BaseEntity(BaseModel):

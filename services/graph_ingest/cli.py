@@ -10,7 +10,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from services.graph_ingest.app.db import init_db, get_session
-from services.graph_ingest.app.ingestors import GitHubIngestor, CrunchbaseIngestor
+from services.graph_ingest.app.ingestors import GitHubIngestor, CrunchbaseIngestor, EdgarIngestor, PatentsViewIngestor
 from services.graph_ingest.app.models.base import SourceType
 
 
@@ -78,6 +78,72 @@ def ingest_crunchbase(args: argparse.Namespace) -> Dict[str, Any]:
     return result
 
 
+def ingest_edgar(args: argparse.Namespace) -> Dict[str, Any]:
+    """
+    Ingest data from SEC EDGAR
+    
+    Args:
+        args: Command-line arguments
+        
+    Returns:
+        Dictionary with ingestion results
+    """
+    # Get the database session
+    db = get_session()
+    
+    # Initialize the SEC EDGAR ingestor
+    ingestor = EdgarIngestor(db, email=args.email)
+    
+    # Ingest data based on provided arguments
+    kwargs = {}
+    if args.ticker:
+        kwargs["ticker"] = args.ticker
+    if args.cik:
+        kwargs["cik"] = args.cik
+    if args.filing_type:
+        kwargs["filing_type"] = args.filing_type
+    if args.max_filings:
+        kwargs["max_filings"] = args.max_filings
+    
+    if not (args.ticker or args.cik):
+        return {"status": "error", "message": "Must provide either --ticker or --cik"}
+    
+    result = ingestor.ingest(**kwargs)
+    return result
+
+
+def ingest_patentsview(args: argparse.Namespace) -> Dict[str, Any]:
+    """
+    Ingest data from PatentsView
+    
+    Args:
+        args: Command-line arguments
+        
+    Returns:
+        Dictionary with ingestion results
+    """
+    # Get the database session
+    db = get_session()
+    
+    # Initialize the PatentsView ingestor
+    ingestor = PatentsViewIngestor(db, api_key=args.token)
+    
+    # Ingest data based on provided arguments
+    kwargs = {}
+    if args.company:
+        kwargs["company"] = args.company
+    if args.assignee:
+        kwargs["assignee"] = args.assignee
+    if args.max_patents:
+        kwargs["max_patents"] = args.max_patents
+    
+    if not (args.company or args.assignee):
+        return {"status": "error", "message": "Must provide either --company or --assignee"}
+    
+    result = ingestor.ingest(**kwargs)
+    return result
+
+
 def ingest_command(args: argparse.Namespace) -> int:
     """
     Handle the 'ingest' command
@@ -97,6 +163,10 @@ def ingest_command(args: argparse.Namespace) -> int:
             result = ingest_github(args)
         elif args.source.lower() == "crunchbase":
             result = ingest_crunchbase(args)
+        elif args.source.lower() == "edgar":
+            result = ingest_edgar(args)
+        elif args.source.lower() == "patentsview":
+            result = ingest_patentsview(args)
         else:
             logger.error(f"Unsupported source: {args.source}")
             return 1
@@ -117,7 +187,20 @@ def ingest_command(args: argparse.Namespace) -> int:
                     print(f"  Repository: {result['repository']}")
                     print(f"  Owner: {result['owner']}")
                     print(f"  Contributors: {result['contributors_count']}")
+                elif "company" in result and "ticker" in result:
+                    # SEC EDGAR result
+                    print(f"  Company: {result['company']}")
+                    print(f"  Ticker: {result['ticker']}")
+                    print(f"  CIK: {result['cik']}")
+                    print(f"  Filings: {result['filings_count']}")
+                    print(f"  Filing Types: {', '.join(result['filing_types'])}")
+                elif "company" in result and "patents_count" in result:
+                    # PatentsView result
+                    print(f"  Company: {result['company']}")
+                    print(f"  Assignee: {result['assignee']}")
+                    print(f"  Patents: {result['patents_count']}")
                 elif "company" in result:
+                    # Crunchbase company result
                     print(f"  Company: {result['company']}")
                     print(f"  Founders: {result['founders_count']}")
                     print(f"  Funding Rounds: {result['funding_rounds_count']}")
@@ -185,7 +268,7 @@ def main():
     ingest_parser.add_argument(
         "--source", 
         required=True, 
-        choices=["github", "crunchbase"],
+        choices=["github", "crunchbase", "edgar", "patentsview"],
         help="Source to ingest data from"
     )
     
@@ -195,8 +278,19 @@ def main():
     ingest_parser.add_argument("--repo", help="GitHub repository in owner/repo format")
     
     # Crunchbase-specific arguments
-    ingest_parser.add_argument("--company", help="Crunchbase company permalink")
+    ingest_parser.add_argument("--company", help="Company name (used by Crunchbase and PatentsView)")
     ingest_parser.add_argument("--person", help="Crunchbase person permalink")
+    
+    # SEC EDGAR-specific arguments
+    ingest_parser.add_argument("--ticker", help="Stock ticker symbol (e.g., NVDA, AAPL)")
+    ingest_parser.add_argument("--cik", help="SEC CIK number")
+    ingest_parser.add_argument("--filing-type", help="Type of filing to look for (default: '10-K,8-K')")
+    ingest_parser.add_argument("--max-filings", type=int, help="Maximum number of filings to ingest (default: 10)")
+    ingest_parser.add_argument("--email", help="Email for SEC EDGAR User-Agent")
+    
+    # PatentsView-specific arguments
+    ingest_parser.add_argument("--assignee", help="Patent assignee name (usually company name)")
+    ingest_parser.add_argument("--max-patents", type=int, help="Maximum number of patents to ingest (default: 20)")
     
     # Common arguments
     ingest_parser.add_argument(
