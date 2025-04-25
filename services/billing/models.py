@@ -1,9 +1,9 @@
-from sqlalchemy import Column, String, Integer, Float, DateTime, Boolean, create_engine, ForeignKey
+from sqlalchemy import Column, String, Integer, Float, DateTime, Boolean, create_engine, ForeignKey, Date
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 import os
-from datetime import datetime
+from datetime import datetime, date
 
 # Get the database URL from the environment
 DATABASE_URL = os.environ.get("DATABASE_URL")
@@ -23,6 +23,9 @@ class SubscriptionPlan(Base):
     description = Column(String)
     price = Column(Float, nullable=False)
     stripe_price_id = Column(String, nullable=False)
+    # Plan limits
+    seat_limit = Column(Integer, default=1)  # Default to 1 seat for Starter plan
+    api_limit_daily = Column(Integer, default=100)  # Default to 100 API calls/day
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
     
@@ -35,6 +38,7 @@ class UserSubscription(Base):
     
     id = Column(String, primary_key=True)
     user_id = Column(String, nullable=False, index=True)
+    lp_id = Column(String, nullable=False, index=True)  # LP (Limited Partner) ID
     plan_id = Column(String, ForeignKey("subscription_plans.id"), nullable=False)
     stripe_customer_id = Column(String, nullable=False)
     stripe_subscription_id = Column(String, nullable=False)
@@ -44,11 +48,6 @@ class UserSubscription(Base):
     cancel_at_period_end = Column(Boolean, default=False)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
-    
-    # API usage limits
-    daily_api_limit = Column(Integer, default=100)
-    daily_api_usage = Column(Integer, default=0)
-    last_api_reset = Column(DateTime, default=func.now())
     
     # Relationship with subscription plan
     plan = relationship("SubscriptionPlan", back_populates="subscriptions")
@@ -68,6 +67,47 @@ class Invoice(Base):
     due_date = Column(DateTime, nullable=False)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+class LPSeat(Base):
+    """Model for LP seats"""
+    __tablename__ = "lp_seats"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    lp_id = Column(String, nullable=False, index=True)
+    user_id = Column(String, nullable=False, index=True)
+    role = Column(String, nullable=False)
+    created_at = Column(DateTime, default=func.now())
+    
+    __table_args__ = (
+        # Composite unique constraint to prevent duplicates
+        {'sqlite_autoincrement': True}
+    )
+
+class ApiUsage(Base):
+    """Model for API usage tracking"""
+    __tablename__ = "api_usage"
+    
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    lp_id = Column(String, nullable=False, index=True)
+    service = Column(String, nullable=False, index=True)  # e.g., 'similarity', 'radar'
+    count = Column(Integer, default=0)
+    date = Column(Date, default=date.today, index=True)
+    
+    __table_args__ = (
+        # Composite unique constraint to prevent duplicates
+        {'sqlite_autoincrement': True}
+    )
+
+# Subscription tier constants
+class SubscriptionTierLimits:
+    """Constants for subscription tier limits"""
+    STARTER_SEAT_LIMIT = 1
+    PRO_SEAT_LIMIT = 3
+    ENTERPRISE_SEAT_LIMIT = 999  # Practically unlimited
+    
+    STARTER_API_LIMIT = 50
+    PRO_API_LIMIT = 500
+    ENTERPRISE_API_LIMIT = 10000  # Practically unlimited
 
 # Create the tables
 def initialize_db():
