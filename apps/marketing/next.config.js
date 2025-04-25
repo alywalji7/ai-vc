@@ -4,6 +4,7 @@ const nextConfig = {
   swcMinify: true,
   images: {
     domains: ['images.unsplash.com'],
+    formats: ['image/avif', 'image/webp'],
   },
   async headers() {
     return [
@@ -22,16 +23,34 @@ const nextConfig = {
             key: 'X-XSS-Protection',
             value: '1; mode=block',
           },
+          {
+            key: 'Referrer-Policy',
+            value: 'strict-origin-when-cross-origin',
+          },
+          {
+            key: 'Strict-Transport-Security',
+            value: 'max-age=63072000; includeSubDomains; preload',
+          },
+          {
+            key: 'Permissions-Policy',
+            value: 'camera=(), microphone=(), geolocation=(), interest-cohort=()',
+          },
         ],
       },
     ];
   },
-  // Redirect from old routes to new ones if needed
   async redirects() {
     return [
+      // Redirect old blog URLs if needed
       {
-        source: '/contact',
-        destination: '/demo',
+        source: '/blog/old-post-slug',
+        destination: '/blog/new-post-slug',
+        permanent: true,
+      },
+      // Redirect old features page
+      {
+        source: '/product-features',
+        destination: '/features',
         permanent: true,
       },
     ];

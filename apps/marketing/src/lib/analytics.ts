@@ -1,95 +1,115 @@
 import posthog from 'posthog-js';
 import ReactGA from 'react-ga4';
 
-export const initAnalytics = () => {
+interface AnalyticsConfig {
+  posthogToken?: string;
+  gaTrackingId?: string;
+}
+
+interface EventData {
+  [key: string]: any;
+}
+
+/**
+ * Initialize analytics with PostHog and Google Analytics
+ */
+export function initAnalytics(config: AnalyticsConfig): void {
   try {
-    // Initialize PostHog
-    if (process.env.NEXT_PUBLIC_POSTHOG_KEY) {
-      posthog.init(process.env.NEXT_PUBLIC_POSTHOG_KEY, {
+    // Initialize PostHog if token is provided
+    if (config.posthogToken) {
+      posthog.init(config.posthogToken, {
         api_host: 'https://app.posthog.com',
         loaded: (posthog) => {
-          if (process.env.NODE_ENV === 'development') {
-            // Don't track in development
+          if (process.env.NODE_ENV !== 'production') {
+            // Disable capturing in development
             posthog.opt_out_capturing();
           }
-        }
+        },
       });
+      console.info('PostHog initialized');
     }
 
-    // Initialize Google Analytics
-    if (process.env.NEXT_PUBLIC_GA4_ID) {
-      ReactGA.initialize(process.env.NEXT_PUBLIC_GA4_ID);
+    // Initialize GA4 if tracking ID is provided
+    if (config.gaTrackingId) {
+      ReactGA.initialize(config.gaTrackingId);
+      console.info('Google Analytics initialized');
     }
   } catch (error) {
-    // Log the error but don't crash the app
-    console.error('Analytics initialization error:', error);
+    console.error('Failed to initialize analytics:', error);
   }
-};
+}
 
-export const trackPageView = (url: string) => {
+/**
+ * Track page view
+ */
+export function trackPageView(path: string): void {
   try {
     // Track in PostHog
-    if (process.env.NEXT_PUBLIC_POSTHOG_KEY) {
-      posthog.capture('$pageview', {
-        url
-      });
-    }
+    posthog.capture('$pageview', {
+      path,
+      url: typeof window !== 'undefined' ? window.location.href : null,
+      referrer: typeof document !== 'undefined' ? document.referrer : null,
+    });
 
-    // Track in Google Analytics
-    if (process.env.NEXT_PUBLIC_GA4_ID) {
-      ReactGA.send({ hitType: 'pageview', page: url });
-    }
+    // Track in GA
+    ReactGA.send({ hitType: 'pageview', page: path });
   } catch (error) {
-    console.error('Error tracking page view:', error);
+    console.error('Failed to track page view:', error);
   }
-};
+}
 
-export const trackEvent = (eventName: string, properties?: Record<string, any>) => {
+/**
+ * Track custom event
+ */
+export function trackEvent(eventName: string, eventData?: EventData): void {
   try {
     // Track in PostHog
-    if (process.env.NEXT_PUBLIC_POSTHOG_KEY) {
-      posthog.capture(eventName, properties);
-    }
+    posthog.capture(eventName, eventData);
 
-    // Track in Google Analytics
-    if (process.env.NEXT_PUBLIC_GA4_ID) {
-      ReactGA.event({
-        category: properties?.category || 'User Action',
-        action: eventName,
-        label: properties?.label,
-        value: properties?.value
-      });
-    }
-
-    // Send to Customer.io webhook (if applicable)
-    if (process.env.NEXT_PUBLIC_CUSTOMER_IO_WEBHOOK && properties?.email) {
-      fetch(process.env.NEXT_PUBLIC_CUSTOMER_IO_WEBHOOK, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          event: eventName,
-          email: properties.email,
-          ...properties
-        })
-      }).catch(err => console.error('Error sending to Customer.io:', err));
-    }
+    // Track in GA
+    ReactGA.event({
+      category: eventData?.category || 'User Action',
+      action: eventName,
+      label: eventData?.label,
+      value: eventData?.value,
+    });
   } catch (error) {
-    console.error('Error tracking event:', error);
+    console.error(`Failed to track event ${eventName}:`, error);
   }
-};
+}
 
-export const identifyUser = (userId: string, traits?: Record<string, any>) => {
+/**
+ * Identify user
+ */
+export function identifyUser(userId: string, userTraits?: { [key: string]: any }): void {
   try {
     // Identify in PostHog
-    if (process.env.NEXT_PUBLIC_POSTHOG_KEY) {
-      posthog.identify(userId, traits);
-    }
+    posthog.identify(userId, userTraits);
 
-    // No direct equivalent in GA4, but we can set user properties
-    if (process.env.NEXT_PUBLIC_GA4_ID && traits) {
-      ReactGA.set({ userId, ...traits });
+    // GA4 doesn't have a direct equivalent to identify
+    // but we can set user properties
+    if (userTraits) {
+      ReactGA.set({
+        userId,
+        ...userTraits,
+      });
     }
   } catch (error) {
-    console.error('Error identifying user:', error);
+    console.error('Failed to identify user:', error);
   }
-};
+}
+
+/**
+ * Reset (anonymize) current user
+ */
+export function resetUser(): void {
+  try {
+    // Reset in PostHog
+    posthog.reset();
+
+    // Reset in GA - set to anonymous
+    ReactGA.set({ userId: undefined });
+  } catch (error) {
+    console.error('Failed to reset user:', error);
+  }
+}

@@ -1,59 +1,137 @@
 import { NextApiRequest, NextApiResponse } from 'next';
 import { Pool } from 'pg';
+import { trackEvent } from '../../lib/analytics';
 
 // Initialize PostgreSQL connection pool
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
+  ssl: process.env.NODE_ENV === 'production' ? { rejectUnauthorized: false } : false,
 });
 
+// Email validation regex
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Define types for our lead form data
 interface LeadData {
-  name: string;
+  firstName: string;
+  lastName: string;
   email: string;
-  company: string;
-  role?: string;
+  company?: string;
+  jobTitle?: string;
+  phone?: string;
   message?: string;
-  source?: string;
+  leadSource: string;
+  campaign?: string;
+  referrer?: string;
+  utmSource?: string;
+  utmMedium?: string;
+  utmCampaign?: string;
+  utmTerm?: string;
+  utmContent?: string;
+  interestedIn?: string;
+  subscribedToNewsletter: boolean;
 }
 
-export default async function handler(req: NextApiRequest, res: NextApiResponse) {
+export default async function handler(
+  req: NextApiRequest,
+  res: NextApiResponse
+) {
   // Only allow POST requests
   if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Method not allowed' });
+    return res.status(405).json({ success: false, message: 'Method not allowed' });
   }
 
   try {
-    const { name, email, company, role, message, source } = req.body as LeadData;
+    const data = req.body as LeadData;
 
-    // Basic validation
-    if (!name || !email || !company) {
-      return res.status(400).json({ error: 'Name, email, and company are required' });
+    // Validate required fields
+    if (!data.firstName || !data.lastName || !data.email) {
+      return res.status(400).json({ success: false, message: 'First name, last name, and email are required' });
     }
 
-    // Email validation
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(email)) {
-      return res.status(400).json({ error: 'Invalid email format' });
+    // Validate email format
+    if (!EMAIL_REGEX.test(data.email)) {
+      return res.status(400).json({ success: false, message: 'Invalid email format' });
     }
 
-    // Insert lead data into database
-    const result = await pool.query(
-      `INSERT INTO marketing_leads (name, email, company, role, message, source, created_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW())
-       RETURNING id`,
-      [name, email, company, role || null, message || null, source || 'website']
-    );
+    // Prepare database query
+    const query = `
+      INSERT INTO marketing_leads (
+        first_name,
+        last_name,
+        email,
+        company,
+        job_title,
+        phone,
+        message,
+        lead_source,
+        campaign,
+        referrer,
+        utm_source,
+        utm_medium,
+        utm_campaign,
+        utm_term,
+        utm_content,
+        interested_in,
+        subscribed_to_newsletter
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17)
+      RETURNING id`;
 
-    // Send notification to admin (could be implemented with SendGrid or similar)
-    // For now, just log to console
-    console.log(`New lead: ${name} (${email}) from ${company}`);
+    const values = [
+      data.firstName,
+      data.lastName,
+      data.email,
+      data.company || null,
+      data.jobTitle || null,
+      data.phone || null,
+      data.message || null,
+      data.leadSource || 'website',
+      data.campaign || null,
+      data.referrer || null,
+      data.utmSource || null,
+      data.utmMedium || null,
+      data.utmCampaign || null,
+      data.utmTerm || null,
+      data.utmContent || null,
+      data.interestedIn || null,
+      data.subscribedToNewsletter || false
+    ];
 
+    // Execute the query
+    const result = await pool.query(query, values);
+    const leadId = result.rows[0].id;
+
+    // Track the lead submission event
+    trackEvent('lead_submitted', {
+      leadId,
+      source: data.leadSource,
+      campaign: data.campaign,
+      utmSource: data.utmSource,
+      subscribedToNewsletter: data.subscribedToNewsletter
+    });
+
+    // Return success response with lead ID
     return res.status(201).json({ 
       success: true, 
-      message: 'Lead information received',
-      id: result.rows[0].id
+      message: 'Lead submitted successfully', 
+      data: { leadId } 
     });
+
   } catch (error) {
-    console.error('Error saving lead:', error);
-    return res.status(500).json({ error: 'Failed to save lead information' });
+    console.error('Error submitting lead:', error);
+
+    // Handle duplicate email error from PostgreSQL
+    if (error instanceof Error && error.message.includes('duplicate key value violates unique constraint')) {
+      return res.status(409).json({ 
+        success: false, 
+        message: 'This email address is already registered in our system' 
+      });
+    }
+
+    // Return generic error response
+    return res.status(500).json({ 
+      success: false, 
+      message: 'An error occurred while submitting your information' 
+    });
   }
 }
