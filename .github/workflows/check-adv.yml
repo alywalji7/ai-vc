@@ -1,0 +1,104 @@
+name: Check ADV Document
+
+on:
+  schedule:
+    # Run on the 1st day of each month at 2 AM UTC
+    - cron: '0 2 1 * *'
+  
+  # Allow manual triggering
+  workflow_dispatch:
+
+jobs:
+  check-adv:
+    name: Check ADV Document Freshness
+    runs-on: ubuntu-latest
+    
+    env:
+      ADV_REQUIRED: ${{ secrets.ADV_REQUIRED || 'true' }}
+      ADV_MAX_AGE_DAYS: 30
+      
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install python-docx docxtpl pdfkit
+          pip install setuptools wheel
+      
+      - name: Check ADV document age
+        id: check-adv
+        run: |
+          # Skip check if ADV_REQUIRED is not 'true'
+          if [ "$ADV_REQUIRED" != "true" ]; then
+            echo "ADV check is not required, skipping"
+            exit 0
+          fi
+          
+          ADV_PATH="services/frontend/public/static/legal/adv.pdf"
+          if [ ! -f "$ADV_PATH" ]; then
+            echo "ADV PDF file not found at $ADV_PATH"
+            echo "needs_update=true" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          
+          # Get file modification time in seconds since epoch
+          FILE_TIME=$(stat -c %Y "$ADV_PATH")
+          CURRENT_TIME=$(date +%s)
+          
+          # Calculate age in days
+          AGE_DAYS=$(( (CURRENT_TIME - FILE_TIME) / 86400 ))
+          echo "ADV document age: $AGE_DAYS days"
+          
+          if [ $AGE_DAYS -gt $ADV_MAX_AGE_DAYS ]; then
+            echo "ADV document is older than $ADV_MAX_AGE_DAYS days"
+            echo "needs_update=true" >> $GITHUB_OUTPUT
+          else
+            echo "ADV document is up to date"
+            echo "needs_update=false" >> $GITHUB_OUTPUT
+          fi
+      
+      - name: Generate new ADV document
+        if: steps.check-adv.outputs.needs_update == 'true'
+        env:
+          ADV_FIRM_NAME: ${{ secrets.ADV_FIRM_NAME }}
+          ADV_CRD_NUMBER: ${{ secrets.ADV_CRD_NUMBER }}
+          ADV_SEC_FILE_NUMBER: ${{ secrets.ADV_SEC_FILE_NUMBER }}
+          ADV_ADDRESS_STREET: ${{ secrets.ADV_ADDRESS_STREET }}
+          ADV_ADDRESS_CITY: ${{ secrets.ADV_ADDRESS_CITY }}
+          ADV_ADDRESS_STATE: ${{ secrets.ADV_ADDRESS_STATE }}
+          ADV_ADDRESS_ZIP: ${{ secrets.ADV_ADDRESS_ZIP }}
+          ADV_PHONE_NUMBER: ${{ secrets.ADV_PHONE_NUMBER }}
+          ADV_WEBSITE: ${{ secrets.ADV_WEBSITE }}
+          ADV_CCO_NAME: ${{ secrets.ADV_CCO_NAME }}
+          ADV_FISCAL_YEAR_END: ${{ secrets.ADV_FISCAL_YEAR_END }}
+        run: |
+          mkdir -p services/frontend/public/static/legal
+          python services/compliance/adv_generator.py
+      
+      - name: Create Pull Request for updated ADV
+        if: steps.check-adv.outputs.needs_update == 'true'
+        uses: peter-evans/create-pull-request@v5
+        with:
+          commit-message: "chore: update ADV document"
+          title: "Update ADV document"
+          body: |
+            This automated PR updates the ADV document that was older than the maximum allowed age (30 days).
+            
+            The ADV document is required to be updated regularly for compliance purposes.
+          branch: update-adv-document
+          delete-branch: true
+          
+      - name: Fail if ADV update is needed but couldn't be generated
+        if: steps.check-adv.outputs.needs_update == 'true'
+        run: |
+          if [ ! -f "services/frontend/public/static/legal/adv.pdf" ] && [ ! -f "services/frontend/public/static/legal/adv.docx" ]; then
+            echo "Failed to generate ADV document"
+            exit 1
+          fi

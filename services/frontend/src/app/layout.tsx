@@ -41,9 +41,33 @@ export default function RootLayout({
                   </main>
                   <footer className="py-4 bg-card border-t border-border">
                     <div className="container mx-auto px-4">
-                      <p className="text-center text-sm text-muted-foreground">
-                        &copy; {new Date().getFullYear()} AI.VC Platform. All rights reserved.
-                      </p>
+                      <div className="flex flex-col sm:flex-row justify-between items-center gap-2">
+                        <p className="text-sm text-muted-foreground">
+                          &copy; {new Date().getFullYear()} AI.VC Platform. All rights reserved.
+                        </p>
+                        <div className="flex gap-4 text-sm">
+                          <a 
+                            href="/static/legal/adv.pdf" 
+                            target="_blank" 
+                            rel="noopener noreferrer"
+                            className="text-primary hover:text-primary/90 transition-colors"
+                          >
+                            Download latest ADV
+                          </a>
+                          <a 
+                            href="/legal/terms" 
+                            className="text-muted-foreground hover:text-foreground transition-colors"
+                          >
+                            Terms
+                          </a>
+                          <a 
+                            href="/legal/privacy"
+                            className="text-muted-foreground hover:text-foreground transition-colors"
+                          >
+                            Privacy
+                          </a>
+                        </div>
+                      </div>
                     </div>
                   </footer>
                 </div>
