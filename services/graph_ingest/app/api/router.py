@@ -4,7 +4,10 @@ from typing import List, Dict, Any, Optional
 
 from app.db import get_session, get_entities_by_type, get_relationships_by_type
 from app.models.base import SourceType
-from app.ingestors import GitHubIngestor, CrunchbaseIngestor
+from app.ingestors import (
+    GitHubIngestor, CrunchbaseIngestor,
+    ProductHuntConnector, EdgarFormDConnector
+)
 from .models import (
     IngestRequest, IngestResponse, 
     EntityResponse, RelationshipResponse
@@ -143,3 +146,123 @@ def get_relationships(
         )
         for rel in relationships
     ]
+
+
+@router.post("/ingest/product_hunt", tags=["ingest"])
+async def ingest_product_hunt_data(
+    days_lookback: int = Query(7, description="Number of days to look back for product launches"),
+    db: Session = Depends(get_session)
+):
+    """
+    Ingest product launch data from Product Hunt
+    
+    This endpoint fetches recent product launches from Product Hunt and adds them
+    to the knowledge graph as LAUNCH_EVENT entities with LAUNCHED relationships
+    to the corresponding company entities.
+    """
+    try:
+        connector = ProductHuntConnector()
+        num_entities, num_relationships = await connector.ingest(days_lookback=days_lookback)
+        
+        return {
+            "status": "success",
+            "message": f"Ingested {num_entities} entities and {num_relationships} relationships from Product Hunt",
+            "entities_count": num_entities,
+            "relationships_count": num_relationships,
+            "source": SourceType.PRODUCT_HUNT
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Error ingesting data from Product Hunt: {str(e)}",
+            "source": SourceType.PRODUCT_HUNT
+        }
+
+
+@router.post("/ingest/form_d", tags=["ingest"])
+async def ingest_form_d_data(
+    days_lookback: int = Query(7, description="Number of days to look back for SEC Form D filings"),
+    db: Session = Depends(get_session)
+):
+    """
+    Ingest SEC Form D filings
+    
+    This endpoint fetches recent Form D filings from the SEC EDGAR database and adds them
+    to the knowledge graph as RAISE_EVENT entities with RAISED relationships
+    to the corresponding company entities.
+    """
+    try:
+        connector = EdgarFormDConnector()
+        num_entities, num_relationships = await connector.ingest(days_lookback=days_lookback)
+        
+        return {
+            "status": "success",
+            "message": f"Ingested {num_entities} entities and {num_relationships} relationships from SEC Form D filings",
+            "entities_count": num_entities,
+            "relationships_count": num_relationships,
+            "source": SourceType.SEC_FORM_D
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "message": f"Error ingesting data from SEC Form D filings: {str(e)}",
+            "source": SourceType.SEC_FORM_D
+        }
+
+
+@router.get("/maintenance/cleanup", tags=["maintenance"])
+def cleanup_old_data(
+    days_to_keep: int = Query(90, description="Number of days of data to retain"), 
+    db: Session = Depends(get_session)
+):
+    """
+    Clean up data older than a specified number of days
+    
+    This endpoint removes entities and relationships that were created more than
+    days_to_keep days ago. Useful for maintaining a manageable database size.
+    """
+    try:
+        from app.db.schema import Entity, Relationship
+        from datetime import datetime, timedelta
+        
+        cutoff_date = datetime.now() - timedelta(days=days_to_keep)
+        
+        # Delete old relationships first (to maintain referential integrity)
+        old_relationships = db.query(Relationship).filter(
+            Relationship.created_at < cutoff_date
+        ).all()
+        
+        for rel in old_relationships:
+            db.delete(rel)
+        
+        deleted_relationships = len(old_relationships)
+        
+        # Delete orphaned entities (no relationships)
+        subquery = db.query(Relationship.from_entity_id).union(
+            db.query(Relationship.to_entity_id)
+        ).distinct().subquery()
+        
+        orphaned_entities = db.query(Entity).filter(
+            Entity.created_at < cutoff_date,
+            ~Entity.id.in_(subquery)
+        ).all()
+        
+        for entity in orphaned_entities:
+            db.delete(entity)
+            
+        deleted_entities = len(orphaned_entities)
+        
+        db.commit()
+        
+        return {
+            "status": "success",
+            "message": f"Cleanup complete: Removed {deleted_entities} entities and {deleted_relationships} relationships older than {days_to_keep} days",
+            "deleted_entities": deleted_entities,
+            "deleted_relationships": deleted_relationships
+        }
+    except Exception as e:
+        db.rollback()
+        return {
+            "status": "error",
+            "message": f"Error during cleanup: {str(e)}"
+        }

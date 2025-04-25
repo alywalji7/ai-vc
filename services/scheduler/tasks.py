@@ -316,3 +316,63 @@ def update_ofac_sanctions(self) -> Dict[str, Any]:
             "status": "error",
             "error": str(e)
         }
+
+
+@app.task(bind=True, name="services.scheduler.tasks.ingest_product_hunt")
+@track_task_metrics
+def ingest_product_hunt(self, days_lookback: int = 7) -> Dict[str, Any]:
+    """
+    Task to ingest product launch data from Product Hunt.
+    
+    Args:
+        days_lookback: Number of days to look back for product launches
+        
+    Returns:
+        Dictionary with ingestion results
+    """
+    url = f"{GRAPH_INGEST_API_URL}/api/ingest/product_hunt?days_lookback={days_lookback}"
+    
+    try:
+        response = httpx.post(url)
+        response.raise_for_status()
+        return response.json()
+    except httpx.RequestError as e:
+        self.retry(exc=e, countdown=60, max_retries=3)
+        return {"status": "error", "message": f"Request error: {str(e)}"}
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code >= 500:
+            self.retry(exc=e, countdown=60, max_retries=3)
+            return {"status": "error", "message": f"Server error: {str(e)}"}
+        else:
+            # Client error, don't retry
+            return {"status": "error", "message": f"Client error: {str(e)}"}
+
+
+@app.task(bind=True, name="services.scheduler.tasks.ingest_form_d")
+@track_task_metrics
+def ingest_form_d(self, days_lookback: int = 7) -> Dict[str, Any]:
+    """
+    Task to ingest SEC Form D filings.
+    
+    Args:
+        days_lookback: Number of days to look back for filings
+        
+    Returns:
+        Dictionary with ingestion results
+    """
+    url = f"{GRAPH_INGEST_API_URL}/api/ingest/form_d?days_lookback={days_lookback}"
+    
+    try:
+        response = httpx.post(url)
+        response.raise_for_status()
+        return response.json()
+    except httpx.RequestError as e:
+        self.retry(exc=e, countdown=60, max_retries=3)
+        return {"status": "error", "message": f"Request error: {str(e)}"}
+    except httpx.HTTPStatusError as e:
+        if e.response.status_code >= 500:
+            self.retry(exc=e, countdown=60, max_retries=3)
+            return {"status": "error", "message": f"Server error: {str(e)}"}
+        else:
+            # Client error, don't retry
+            return {"status": "error", "message": f"Client error: {str(e)}"}

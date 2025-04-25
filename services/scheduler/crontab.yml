@@ -42,6 +42,24 @@ tasks:
     args: ["vercel"]
     enabled: true
 
+  # Product Hunt data ingestion tasks
+  product_hunt_ingest:
+    name: Ingest Product Hunt Data
+    description: Fetches product launch data from Product Hunt
+    cron: "0 */1 * * *"  # Hourly
+    task: tasks.ingest_product_hunt
+    args: [7]  # Look back 7 days
+    enabled: true
+
+  # SEC Form D data ingestion tasks
+  form_d_ingest:
+    name: Ingest SEC Form D Filings
+    description: Fetches Form D filings from SEC EDGAR database
+    cron: "0 2 * * *"  # Once a day at 2 AM
+    task: tasks.ingest_form_d
+    args: [7]  # Look back 7 days
+    enabled: true
+
   # Compliance tasks
   update_ofac_sanctions:
     name: Update OFAC Sanctions List

@@ -11,6 +11,8 @@ class SourceType(str, Enum):
     SEC_EDGAR = "sec_edgar"
     TWITTER_X = "twitter_x"
     LINKEDIN = "linkedin"
+    PRODUCT_HUNT = "product_hunt"
+    SEC_FORM_D = "sec_form_d"
 
 
 class EntityType(str, Enum):
@@ -24,6 +26,8 @@ class EntityType(str, Enum):
     FUNDING_ROUND = "funding_round"
     PATENT = "patent"
     FILING = "filing"
+    LAUNCH_EVENT = "launch_event"
+    RAISE_EVENT = "raise_event"
 
 
 class RelationshipType(str, Enum):
@@ -36,6 +40,8 @@ class RelationshipType(str, Enum):
     AUTHORED = "authored"
     FILED = "filed"
     HOLDS = "holds"
+    LAUNCHED = "launched"        # Company launched a product
+    RAISED = "raised"            # Company raised funding
 
 
 class BaseEntity(BaseModel):

@@ -60,6 +60,10 @@ args = "Documentation Server"
 task = "workflow.run"
 args = "Beta Feedback Service"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Billing Service"
+
 [[workflows.workflow]]
 name = "Frontend Service"
 author = "agent"
@@ -240,6 +244,21 @@ task = "shell.exec"
 args = "cd services/beta_feedback && pip install -r requirements.txt && python main.py"
 waitForPort = 8200
 
+[[workflows.workflow]]
+name = "Billing Service"
+author = "agent"
+
+[workflows.workflow.metadata]
+agentRequireRestartOnSave = false
+
+[[workflows.workflow.tasks]]
+task = "packager.installForAll"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd services/billing && pip install -r requirements.txt && python main.py"
+waitForPort = 8300
+
 [deployment]
 run = ["sh", "-c", "cd services/frontend && npm install && npm run dev -- -p 5000"]
 
@@ -294,6 +313,10 @@ externalPort = 6000
 [[ports]]
 localPort = 8200
 externalPort = 8099
+
+[[ports]]
+localPort = 8300
+externalPort = 6800
 
 [[ports]]
 localPort = 9090

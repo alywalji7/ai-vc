@@ -74,6 +74,17 @@ export default function Navbar() {
               >
                 Audit Trail
               </Link>
+              <Link
+                href="/pricing"
+                className={cn(
+                  "inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors",
+                  isActive('/pricing') 
+                    ? 'border-primary text-foreground' 
+                    : 'border-transparent text-muted-foreground hover:border-border hover:text-foreground'
+                )}
+              >
+                Pricing
+              </Link>
             </div>
           </div>
           <div className="flex items-center">
