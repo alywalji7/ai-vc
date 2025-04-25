@@ -23,6 +23,7 @@ export function MobileNav() {
     { href: '/dashboard', label: 'Dashboard' },
     { href: '/deal-memos', label: 'Deal Memos' },
     { href: '/audit-trail', label: 'Audit Trail' },
+    { href: '/portfolio', label: 'Portfolio' },
     { href: '/pricing', label: 'Pricing' },
   ];
 
