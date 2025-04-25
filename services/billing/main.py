@@ -18,10 +18,17 @@ from repository import (
     get_lp_seats, count_lp_seats, track_api_usage, get_api_usage, 
     get_total_api_usage, check_api_limit, create_invoice
 )
+import boto3
+import io
+from reportlab.lib.pagesizes import letter
+from reportlab.pdfgen import canvas
+from reportlab.lib import colors
+from reportlab.platypus import Table, TableStyle
+
 from stripe_service import (
     SubscriptionTier, SubscriptionStatus, UsageType, create_checkout_session, 
     get_tier_details, handle_webhook_event, report_usage, get_subscription_tier,
-    retrieve_subscription, TIER_LIMITS, PRICE_IDS
+    retrieve_subscription, create_customer_portal_session, TIER_LIMITS, PRICE_IDS
 )
 
 # Setup logging
@@ -85,6 +92,10 @@ class APIUsageRequest(BaseModel):
     lp_id: str
     service: str
     count: int = 1
+    
+class CustomerPortalRequest(BaseModel):
+    customer_id: str
+    return_url: str
 
 # Define the API routes
 @app.get("/", include_in_schema=False)
@@ -156,6 +167,40 @@ def get_lp_subscription_details(lp_id: str, db: Session = Depends(get_db)):
         seat_limit=plan.seat_limit,
         api_limit_daily=plan.api_limit_daily
     )
+
+class InvoiceResponse(BaseModel):
+    id: str
+    user_id: str
+    stripe_invoice_id: str
+    amount_due: float
+    amount_paid: float
+    status: str
+    invoice_date: datetime
+    due_date: datetime
+    pdf_url: Optional[str] = None
+    created_at: datetime
+
+@app.get("/invoices/{user_id}")
+def get_user_invoice_history(user_id: str, db: Session = Depends(get_db)):
+    """Get invoice history for a user"""
+    invoices = get_user_invoices(db, user_id)
+    if not invoices:
+        return []
+    
+    return [
+        InvoiceResponse(
+            id=invoice.id,
+            user_id=invoice.user_id,
+            stripe_invoice_id=invoice.stripe_invoice_id,
+            amount_due=invoice.amount_due,
+            amount_paid=invoice.amount_paid,
+            status=invoice.status,
+            invoice_date=invoice.invoice_date,
+            due_date=invoice.due_date,
+            pdf_url=invoice.pdf_url,
+            created_at=invoice.created_at
+        ) for invoice in invoices
+    ]
 
 @app.post("/api-usage/check")
 def check_api_usage(request: APIUsageRequest, db: Session = Depends(get_db)):
@@ -253,6 +298,19 @@ def remove_existing_seat(lp_id: str, user_id: str, db: Session = Depends(get_db)
     
     return {"success": True}
 
+@app.post("/create-customer-portal")
+def create_billing_portal_session(request: CustomerPortalRequest):
+    """Create a Stripe customer portal session"""
+    try:
+        session = create_customer_portal_session(
+            customer_id=request.customer_id,
+            return_url=request.return_url
+        )
+        return session
+    except Exception as e:
+        logger.error(f"Error creating customer portal session: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
 @app.post("/webhook")
 async def stripe_webhook(request: Request, stripe_signature: str = Header(None)):
     """Handle Stripe webhook events"""
@@ -276,6 +334,8 @@ async def stripe_webhook(request: Request, stripe_signature: str = Header(None))
             await handle_checkout_completed(event_data)
         elif event_type == "invoice.payment_failed":
             await handle_invoice_payment_failed(event_data)
+        elif event_type == "customer.subscription.deleted":
+            await handle_subscription_canceled(event_data)
         # Add more event handlers as needed
         
         return JSONResponse({"success": True})
@@ -406,6 +466,221 @@ async def handle_invoice_payment_failed(event_data):
             logger.warning(f"Could not find subscription for customer {customer_id}")
     except Exception as e:
         logger.error(f"Error processing invoice payment failure: {str(e)}")
+
+async def handle_subscription_canceled(event_data):
+    """
+    Handle customer.subscription.deleted event
+    
+    This webhook sets subscription status to CANCELED 
+    which will put the application in read-only mode
+    """
+    subscription_data = event_data
+    
+    # Get the subscription ID
+    subscription_id = subscription_data.get("id")
+    customer_id = subscription_data.get("customer")
+    
+    if not subscription_id or not customer_id:
+        logger.error("Missing required data in subscription canceled webhook")
+        return
+    
+    try:
+        # Find the subscription in our database
+        db = next(get_db())
+        subscription = db.query(UserSubscription).filter_by(stripe_subscription_id=subscription_id).first()
+        
+        if not subscription:
+            logger.warning(f"Could not find subscription {subscription_id} in database")
+            return
+        
+        # Update subscription status to CANCELED
+        update_user_subscription(db, subscription.user_id, {"status": SubscriptionStatus.CANCELED})
+        
+        # Generate a final invoice PDF if needed
+        try:
+            # Get the most recent invoice
+            invoices = stripe.Invoice.list(
+                customer=customer_id,
+                subscription=subscription_id,
+                limit=1
+            )
+            
+            if invoices and invoices.data:
+                latest_invoice = invoices.data[0]
+                await generate_invoice_pdf(db, latest_invoice.id)
+        except Exception as e:
+            logger.error(f"Error generating final invoice PDF: {str(e)}")
+        
+        logger.info(f"Subscription {subscription_id} for user {subscription.user_id} has been canceled")
+    except Exception as e:
+        logger.error(f"Error processing subscription canceled webhook: {str(e)}")
+
+async def generate_invoice_pdf(db, stripe_invoice_id):
+    """
+    Generate and store a PDF for an invoice
+    
+    Args:
+        db: Database session
+        stripe_invoice_id: Stripe invoice ID
+    """
+    try:
+        # Retrieve invoice from Stripe
+        invoice = stripe.Invoice.retrieve(stripe_invoice_id, expand=["customer", "subscription"])
+        
+        if not invoice:
+            logger.error(f"Could not retrieve invoice {stripe_invoice_id} from Stripe")
+            return
+        
+        # Check if we have a record of this invoice
+        invoice_record = db.query(Invoice).filter_by(stripe_invoice_id=stripe_invoice_id).first()
+        
+        if not invoice_record:
+            # Create a record for it
+            invoice_record = create_invoice(
+                db=db,
+                user_id=None,  # We'll update this below
+                stripe_invoice_id=invoice.id,
+                stripe_customer_id=invoice.customer.id,
+                amount_due=invoice.amount_due / 100,  # Convert from cents
+                amount_paid=invoice.amount_paid / 100,  # Convert from cents
+                status=invoice.status,
+                invoice_date=datetime.fromtimestamp(invoice.created),
+                due_date=datetime.fromtimestamp(invoice.due_date or invoice.created)
+            )
+        
+        # Find subscription in our system
+        subscription = db.query(UserSubscription).filter_by(stripe_subscription_id=invoice.subscription.id).first()
+        
+        if subscription:
+            # Update invoice with user_id if we have a subscription record
+            if not invoice_record.user_id:
+                invoice_record.user_id = subscription.user_id
+                db.commit()
+        else:
+            logger.warning(f"Could not find subscription {invoice.subscription.id} in our database")
+        
+        # Generate PDF
+        buffer = io.BytesIO()
+        pdf = canvas.Canvas(buffer, pagesize=letter)
+        
+        # Set up PDF
+        width, height = letter
+        
+        # Title and header
+        pdf.setFont("Helvetica-Bold", 24)
+        pdf.drawString(50, height - 50, "AI.VC Invoice")
+        
+        pdf.setFont("Helvetica", 12)
+        pdf.drawString(50, height - 80, f"Invoice #: {invoice.number}")
+        pdf.drawString(50, height - 100, f"Date: {datetime.fromtimestamp(invoice.created).strftime('%Y-%m-%d')}")
+        pdf.drawString(50, height - 120, f"Due Date: {datetime.fromtimestamp(invoice.due_date or invoice.created).strftime('%Y-%m-%d')}")
+        
+        # Customer information
+        pdf.setFont("Helvetica-Bold", 14)
+        pdf.drawString(50, height - 160, "Customer Information")
+        
+        pdf.setFont("Helvetica", 12)
+        pdf.drawString(50, height - 180, f"Customer: {invoice.customer.name or invoice.customer.email}")
+        pdf.drawString(50, height - 200, f"Email: {invoice.customer.email}")
+        
+        # Line Items
+        pdf.setFont("Helvetica-Bold", 14)
+        pdf.drawString(50, height - 240, "Invoice Items")
+        
+        # Create a table for line items
+        items_data = [["Description", "Quantity", "Unit Price", "Amount"]]
+        
+        for item in invoice.lines.data:
+            description = item.description or f"Subscription: {item.plan.nickname if hasattr(item, 'plan') else 'Service'}"
+            quantity = item.quantity if item.quantity else 1
+            unit_amount = (item.price.unit_amount or 0) / 100  # Convert from cents
+            amount = (item.amount or 0) / 100  # Convert from cents
+            
+            items_data.append([
+                description, 
+                str(quantity), 
+                f"${unit_amount:.2f}", 
+                f"${amount:.2f}"
+            ])
+        
+        # Add totals
+        items_data.append(["", "", "Subtotal", f"${invoice.subtotal / 100:.2f}"])
+        
+        if invoice.tax:
+            items_data.append(["", "", "Tax", f"${invoice.tax / 100:.2f}"])
+        
+        if invoice.discount:
+            items_data.append(["", "", "Discount", f"-${invoice.discount.amount_off / 100:.2f}"])
+        
+        items_data.append(["", "", "Total", f"${invoice.total / 100:.2f}"])
+        
+        # Create table
+        table = Table(items_data)
+        table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.grey),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black),
+            ('ALIGN', (1, 1), (-1, -1), 'RIGHT'),
+        ]))
+        
+        table.wrapOn(pdf, width - 100, height)
+        table.drawOn(pdf, 50, height - 240 - (len(items_data) * 20) - 20)
+        
+        # Footer with payment status
+        footer_y = height - 240 - (len(items_data) * 20) - 80
+        pdf.setFont("Helvetica-Bold", 14)
+        pdf.drawString(50, footer_y, "Payment Status")
+        
+        pdf.setFont("Helvetica", 12)
+        status_color = colors.green if invoice.paid else colors.red
+        pdf.setFillColor(status_color)
+        pdf.drawString(50, footer_y - 20, "PAID" if invoice.paid else "UNPAID")
+        pdf.setFillColor(colors.black)
+        
+        # Finalize the PDF
+        pdf.save()
+        
+        # Upload to S3
+        buffer.seek(0)
+        s3_key = f"billing/{stripe_invoice_id}.pdf"
+        
+        try:
+            # Initialize S3 client
+            s3 = boto3.client(
+                's3',
+                region_name='us-east-1',  # Adjust as needed
+                aws_access_key_id=os.environ.get('AWS_ACCESS_KEY_ID'),
+                aws_secret_access_key=os.environ.get('AWS_SECRET_ACCESS_KEY')
+            )
+            
+            # Upload to S3
+            s3.upload_fileobj(
+                buffer,
+                os.environ.get('S3_BUCKET_NAME', 'ai-vc-invoices'),
+                s3_key,
+                ExtraArgs={'ContentType': 'application/pdf'}
+            )
+            
+            # Update invoice record with PDF URL
+            invoice_record.pdf_url = f"s3://{os.environ.get('S3_BUCKET_NAME', 'ai-vc-invoices')}/{s3_key}"
+            db.commit()
+            
+            logger.info(f"Successfully uploaded invoice PDF for {stripe_invoice_id} to S3")
+            return invoice_record.pdf_url
+        except Exception as e:
+            logger.error(f"Error uploading invoice PDF to S3: {str(e)}")
+            # Even if S3 upload fails, store the PDF data in the database
+            invoice_record.pdf_data = buffer.getvalue()
+            db.commit()
+            logger.info(f"Stored invoice PDF for {stripe_invoice_id} in database")
+            return None
+    except Exception as e:
+        logger.error(f"Error generating invoice PDF: {str(e)}")
+        return None
 
 async def report_daily_usage_to_stripe():
     """Report daily usage metrics to Stripe"""

@@ -362,3 +362,43 @@ def get_subscription_item_ids(subscription_id: str) -> Dict[str, str]:
     except Exception as e:
         logger.error(f"Error getting subscription item IDs: {str(e)}")
         return {}
+
+def create_customer_portal_session(customer_id: str, return_url: str) -> Dict[str, Any]:
+    """
+    Create a Stripe Customer Portal session for the customer
+    
+    Args:
+        customer_id: The Stripe customer ID
+        return_url: URL to redirect to after the customer portal session
+        
+    Returns:
+        Dict containing the customer portal session URL
+    """
+    try:
+        session = stripe.billing_portal.Session.create(
+            customer=customer_id,
+            return_url=return_url,
+            features={
+                "customer_update": {
+                    "allowed_updates": ["email", "address", "shipping", "phone", "tax_id"],
+                    "enabled": True,
+                },
+                "invoice_history": {"enabled": True},
+                "payment_method_update": {"enabled": True},
+                "subscription_cancel": {"enabled": True},
+                "subscription_update": {
+                    "enabled": True,
+                    "default_allowed_updates": ["price", "quantity"],
+                    "products": {
+                        # Include product mappings as needed
+                    }
+                }
+            }
+        )
+        
+        return {
+            "url": session.url
+        }
+    except Exception as e:
+        logger.error(f"Error creating customer portal session: {str(e)}")
+        raise

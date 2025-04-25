@@ -57,7 +57,7 @@ class Invoice(Base):
     __tablename__ = "invoices"
     
     id = Column(String, primary_key=True)
-    user_id = Column(String, nullable=False, index=True)
+    user_id = Column(String, nullable=True, index=True)  # Nullable to allow creation prior to user lookup
     stripe_invoice_id = Column(String, nullable=False)
     stripe_customer_id = Column(String, nullable=False)
     amount_due = Column(Float, nullable=False)
@@ -65,6 +65,8 @@ class Invoice(Base):
     status = Column(String, nullable=False)  # paid, open, uncollectible, void
     invoice_date = Column(DateTime, nullable=False)
     due_date = Column(DateTime, nullable=False)
+    pdf_url = Column(String, nullable=True)  # URL to the S3 bucket where PDF is stored
+    pdf_data = Column(String, nullable=True)  # Base64 encoded PDF data as fallback
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 

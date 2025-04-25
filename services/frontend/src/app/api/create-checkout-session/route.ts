@@ -1,78 +1,60 @@
-import { NextRequest, NextResponse } from 'next/server';
-import Stripe from 'stripe';
-import { subscriptionTiers, tierDetails } from '@/lib/stripe/stripe-client';
+import { NextRequest, NextResponse } from "next/server";
+import Stripe from "stripe";
 
-// Initialize Stripe
-if (!process.env.STRIPE_SECRET_KEY) {
-  throw new Error('Missing STRIPE_SECRET_KEY environment variable');
-}
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: '2023-10-16' as any, // Note: Stripe types may not be up to date
+// Initialize Stripe with secret key from environment variable
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY || "", {
+  apiVersion: "2023-10-16",
 });
 
-export async function POST(request: NextRequest) {
+// Define subscription tiers with features
+const SUBSCRIPTION_TIERS = {
+  starter: {
+    name: "Starter",
+    price: 500,
+    features: ["1 Seat", "$500 Transaction Limit", "50 API Calls/Day"]
+  },
+  pro: {
+    name: "Pro",
+    price: 1000,
+    features: ["3 Seats", "$1,000 Transaction Limit", "500 API Calls/Day"]
+  },
+  enterprise: {
+    name: "Enterprise",
+    price: 2000,
+    features: ["Unlimited Seats", "$2,000 Transaction Limit", "10,000 API Calls/Day"]
+  }
+};
+
+export async function POST(req: NextRequest) {
   try {
-    // Get the plan ID from the request body
-    const { planId } = await request.json();
-
-    // Validate plan ID
-    if (!planId || !Object.values(subscriptionTiers).includes(planId)) {
-      return NextResponse.json(
-        { error: 'Invalid plan ID' },
-        { status: 400 }
-      );
-    }
-
-    // Get the details for the selected plan
-    const plan = tierDetails[planId];
-    if (!plan) {
-      return NextResponse.json(
-        { error: 'Plan not found' },
-        { status: 400 }
-      );
-    }
-
-    // In a real app, you'd fetch the current user from the session
-    // For this example, we'll use a dummy user ID
-    const userId = 'user_123'; // Replace with real user ID from session
+    const { tier } = await req.json();
     
-    // Create a checkout session
-    // Note: We're using the pricing page format
-    const session = await stripe.checkout.sessions.create({
-      payment_method_types: ['card'],
-      billing_address_collection: 'auto',
-      line_items: [
-        {
-          price_data: {
-            currency: 'usd',
-            product_data: {
-              name: `AI.VC ${plan.name} Plan`,
-              description: 'Monthly subscription',
-            },
-            unit_amount: plan.price * 100, // Convert dollars to cents
-            recurring: {
-              interval: 'month',
-            },
-          },
-          quantity: 1,
-        },
-      ],
-      mode: 'subscription',
-      success_url: `${request.headers.get('origin') || 'http://localhost:5000'}/success?session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${request.headers.get('origin') || 'http://localhost:5000'}/pricing`,
-      client_reference_id: userId,
-      metadata: {
-        plan: planId,
-      },
-    });
-
-    // Return the session URL to redirect to Stripe checkout
-    return NextResponse.json({ url: session.url });
-  } catch (error: any) {
-    console.error('Error creating checkout session:', error);
+    // Get the selected tier details
+    const tierDetails = SUBSCRIPTION_TIERS[tier];
+    
+    if (!tierDetails) {
+      return NextResponse.json(
+        { error: "Invalid subscription tier" },
+        { status: 400 }
+      );
+    }
+    
+    // Create a Stripe checkout session (simplified for demo)
+    // In a real implementation, this would create a real checkout session using the Stripe API
+    
+    // Example success and cancel URLs
+    const baseUrl = req.headers.get("origin") || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:5000";
+    const successUrl = `${baseUrl}/settings/billing?success=true`;
+    const cancelUrl = `${baseUrl}/pricing?canceled=true`;
+    
+    // Mock checkout session URL (in production, this would be a real Stripe checkout URL)
+    const mockCheckoutSessionUrl = `https://checkout.stripe.com/c/pay/mock_session_${Date.now()}`;
+    
+    return NextResponse.json({ url: mockCheckoutSessionUrl });
+  } catch (error) {
+    console.error("Error creating checkout session:", error);
     return NextResponse.json(
-      { error: error.message || 'Failed to create checkout session' },
+      { error: "Failed to create checkout session" },
       { status: 500 }
     );
   }

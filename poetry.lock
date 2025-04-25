@@ -694,6 +694,17 @@ files = [
 pycparser = "*"
 
 [[package]]
+name = "chardet"
+version = "5.2.0"
+description = "Universal encoding detector for Python 3"
+optional = false
+python-versions = ">=3.7"
+files = [
+    {file = "chardet-5.2.0-py3-none-any.whl", hash = "sha256:e1cf59446890a00105fe7b7912492ea04b6e6f06d4b742b2c788469e34c82970"},
+    {file = "chardet-5.2.0.tar.gz", hash = "sha256:1b3b6ff479a8c414bc3fa2c0852995695c4a026dcd6d0633b2dd092ca39c1cf7"},
+]
+
+[[package]]
 name = "charset-normalizer"
 version = "3.4.1"
 description = "The Real First Universal Charset Detector. Open, modern and actively maintained alternative to Chardet."
@@ -4885,6 +4896,28 @@ files = [
 ]
 
 [[package]]
+name = "reportlab"
+version = "4.4.0"
+description = "The Reportlab Toolkit"
+optional = false
+python-versions = "<4,>=3.7"
+files = [
+    {file = "reportlab-4.4.0-py3-none-any.whl", hash = "sha256:0a993f1d4a765fcbdf4e26adc96b3351004ebf4d27583340595ba7edafebec32"},
+    {file = "reportlab-4.4.0.tar.gz", hash = "sha256:a64d85513910e246c21dc97ccc3c9054a1d44370bf8fc1fab80af937814354d5"},
+]
+
+[package.dependencies]
+chardet = "*"
+pillow = ">=9.0.0"
+
+[package.extras]
+accel = ["rl_accel (>=0.9.0,<1.1)"]
+bidi = ["rlbidi"]
+pycairo = ["freetype-py (>=2.3.0,<2.4)", "rlPyCairo (>=0.2.0,<1)"]
+renderpm = ["rl_renderPM (>=4.0.3,<4.1)"]
+shaping = ["uharfbuzz"]
+
+[[package]]
 name = "requests"
 version = "2.32.3"
 description = "Python HTTP for Humans."
@@ -6174,4 +6207,4 @@ type = ["pytest-mypy"]
 [metadata]
 lock-version = "2.0"
 python-versions = "^3.11"
-content-hash = "bad4bfef987ff728ebcf43a77b1b2df1485bcc57e583c6ce1213904e440f56ca"
+content-hash = "c0a9bad232eae129bcae0e6c4cdf452a177e16ca30da93e73f385599a5e1057b"
