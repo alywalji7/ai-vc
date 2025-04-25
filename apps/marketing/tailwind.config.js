@@ -7,119 +7,110 @@ module.exports = {
   theme: {
     extend: {
       colors: {
-        // Primary palette: Sky blue
         primary: {
-          50: "#f0f9ff",
-          100: "#e0f2fe",
-          200: "#bae6fd",
-          300: "#7dd3fc",
-          400: "#38bdf8",
-          500: "#0ea5e9",
-          600: "#0284c7", // Brand primary
-          700: "#0369a1",
-          800: "#075985",
-          900: "#0c4a6e",
-          950: "#082f49",
+          50: '#eef5ff',
+          100: '#d9e7ff',
+          200: '#bcdbff',
+          300: '#8fc0ff',
+          400: '#5d9cff',
+          500: '#3a76ff',
+          600: '#1f55f7',
+          700: '#1641e3',
+          800: '#1838b8',
+          900: '#1b3790',
+          950: '#142156',
         },
-        // Secondary palette: Violet
         secondary: {
-          50: "#f5f3ff",
-          100: "#ede9fe",
-          200: "#ddd6fe",
-          300: "#c4b5fd",
-          400: "#a78bfa",
-          500: "#8b5cf6",
-          600: "#7c3aed", // Brand secondary
-          700: "#6d28d9",
-          800: "#5b21b6",
-          900: "#4c1d95",
-          950: "#2e1065",
+          50: '#edfcff',
+          100: '#d6f6fc',
+          200: '#b5eefa',
+          300: '#83e3f6',
+          400: '#48cded',
+          500: '#25b0d8',
+          600: '#1991b8',
+          700: '#197595',
+          800: '#1c5f7a',
+          900: '#1c4f67',
+          950: '#0d3446',
         },
-        // Accent palette: Emerald
         accent: {
-          50: "#ecfdf5",
-          100: "#d1fae5",
-          200: "#a7f3d0",
-          300: "#6ee7b7",
-          400: "#34d399",
-          500: "#10b981",
-          600: "#059669", // Brand accent
-          700: "#047857",
-          800: "#065f46",
-          900: "#064e3b",
-          950: "#022c22",
+          50: '#f2f9fd',
+          100: '#e4f0fa',
+          200: '#c2e3f5',
+          300: '#8ccded',
+          400: '#4db3e2',
+          500: '#2498d0',
+          600: '#1a7db2',
+          700: '#186791',
+          800: '#195677',
+          900: '#194863',
+          950: '#112f42',
         },
       },
       fontFamily: {
-        sans: ["Inter", "ui-sans-serif", "system-ui", "sans-serif"],
-      },
-      boxShadow: {
-        // Custom shadows
-        feature: "0 5px 30px -5px rgba(0, 0, 0, 0.1)",
-        card: "0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06)",
+        sans: ['Inter', 'sans-serif'],
       },
       typography: (theme) => ({
         DEFAULT: {
           css: {
-            color: theme("colors.gray.700"),
-            h1: {
-              color: theme("colors.gray.900"),
-            },
-            h2: {
-              color: theme("colors.gray.900"),
-            },
-            h3: {
-              color: theme("colors.gray.900"),
-            },
-            h4: {
-              color: theme("colors.gray.900"),
-            },
+            color: theme('colors.gray.700'),
             a: {
-              color: theme("colors.primary.600"),
-              "&:hover": {
-                color: theme("colors.primary.700"),
+              color: theme('colors.primary.600'),
+              '&:hover': {
+                color: theme('colors.primary.700'),
               },
             },
-            strong: {
-              color: theme("colors.gray.900"),
+            h1: {
+              color: theme('colors.gray.900'),
+            },
+            h2: {
+              color: theme('colors.gray.900'),
+            },
+            h3: {
+              color: theme('colors.gray.900'),
+            },
+            h4: {
+              color: theme('colors.gray.900'),
+            },
+            'code::before': {
+              content: '""',
+            },
+            'code::after': {
+              content: '""',
             },
           },
         },
       }),
       animation: {
         'fade-in': 'fadeIn 0.5s ease-in-out',
-        'slide-up': 'slideUp 0.5s ease-out',
-        'slide-down': 'slideDown 0.5s ease-out',
-        'slide-in-right': 'slideInRight 0.5s ease-out',
-        'slide-in-left': 'slideInLeft 0.5s ease-out',
+        'fade-in-up': 'fadeInUp 0.5s ease-out',
+        'fade-in-down': 'fadeInDown 0.5s ease-out',
       },
       keyframes: {
         fadeIn: {
-          '0%': { opacity: '0' },
-          '100%': { opacity: '1' },
+          '0%': { opacity: 0 },
+          '100%': { opacity: 1 },
         },
-        slideUp: {
-          '0%': { transform: 'translateY(10px)', opacity: '0' },
-          '100%': { transform: 'translateY(0)', opacity: '1' },
+        fadeInUp: {
+          '0%': { opacity: 0, transform: 'translateY(20px)' },
+          '100%': { opacity: 1, transform: 'translateY(0)' },
         },
-        slideDown: {
-          '0%': { transform: 'translateY(-10px)', opacity: '0' },
-          '100%': { transform: 'translateY(0)', opacity: '1' },
+        fadeInDown: {
+          '0%': { opacity: 0, transform: 'translateY(-20px)' },
+          '100%': { opacity: 1, transform: 'translateY(0)' },
         },
-        slideInRight: {
-          '0%': { transform: 'translateX(20px)', opacity: '0' },
-          '100%': { transform: 'translateX(0)', opacity: '1' },
-        },
-        slideInLeft: {
-          '0%': { transform: 'translateX(-20px)', opacity: '0' },
-          '100%': { transform: 'translateX(0)', opacity: '1' },
-        },
+      },
+      boxShadow: {
+        subtle: '0 2px 15px 0 rgba(0, 0, 0, 0.05)',
+      },
+      backgroundImage: {
+        'gradient-radial': 'radial-gradient(var(--tw-gradient-stops))',
       },
     },
   },
   plugins: [
-    require('@tailwindcss/typography'),
     require('@tailwindcss/forms'),
+    require('@tailwindcss/typography'),
     require('@tailwindcss/aspect-ratio'),
   ],
 };

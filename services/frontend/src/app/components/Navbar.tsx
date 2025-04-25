@@ -96,6 +96,17 @@ export default function Navbar() {
               >
                 Pricing
               </Link>
+              <Link
+                href="/help-center"
+                className={cn(
+                  "inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium transition-colors",
+                  isActive('/help-center') 
+                    ? 'border-primary text-foreground' 
+                    : 'border-transparent text-muted-foreground hover:border-border hover:text-foreground'
+                )}
+              >
+                Help Center
+              </Link>
             </div>
           </div>
           <div className="flex items-center">

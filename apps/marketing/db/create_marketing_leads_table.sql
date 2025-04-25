@@ -1,79 +1,98 @@
--- Create marketing leads table for storing leads from various sources
+-- Table: public.marketing_leads
 
-CREATE TABLE IF NOT EXISTS marketing_leads (
-  id SERIAL PRIMARY KEY,
-  first_name VARCHAR(100) NOT NULL,
-  last_name VARCHAR(100) NOT NULL,
-  email VARCHAR(255) NOT NULL UNIQUE,
-  company VARCHAR(255),
-  job_title VARCHAR(255),
-  phone VARCHAR(50),
-  message TEXT,
-  lead_source VARCHAR(100) NOT NULL DEFAULT 'website',
-  campaign VARCHAR(100),
-  referrer TEXT,
-  utm_source VARCHAR(100),
-  utm_medium VARCHAR(100),
-  utm_campaign VARCHAR(100),
-  utm_term VARCHAR(100),
-  utm_content VARCHAR(100),
-  interested_in VARCHAR(255),
-  subscribed_to_newsletter BOOLEAN NOT NULL DEFAULT FALSE,
-  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
-  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+CREATE TABLE IF NOT EXISTS public.marketing_leads (
+    id SERIAL PRIMARY KEY,
+    email VARCHAR(255) NOT NULL,
+    name VARCHAR(100),
+    company VARCHAR(100),
+    title VARCHAR(100),
+    phone VARCHAR(50),
+    company_size VARCHAR(50),
+    investment_stage VARCHAR(50),
+    fund_size VARCHAR(50),
+    lead_source VARCHAR(50) NOT NULL,
+    lead_campaign VARCHAR(100),
+    lead_medium VARCHAR(50),
+    is_subscribed BOOLEAN DEFAULT TRUE,
+    notes TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    last_contacted_at TIMESTAMP WITH TIME ZONE,
+    status VARCHAR(20) DEFAULT 'new',
+    assigned_to VARCHAR(50),
+    utm_source VARCHAR(100),
+    utm_medium VARCHAR(100),
+    utm_campaign VARCHAR(100),
+    utm_term VARCHAR(100),
+    utm_content VARCHAR(100),
+    referrer_url TEXT,
+    first_page_visited TEXT,
+    user_agent TEXT,
+    ip_address VARCHAR(50),
+    country VARCHAR(50),
+    city VARCHAR(50),
+    CONSTRAINT marketing_leads_email_unique UNIQUE (email)
 );
 
--- Add an index on email for faster lookups
-CREATE INDEX IF NOT EXISTS idx_marketing_leads_email ON marketing_leads (email);
+-- Indexes
+CREATE INDEX IF NOT EXISTS idx_marketing_leads_email ON public.marketing_leads(email);
+CREATE INDEX IF NOT EXISTS idx_marketing_leads_created_at ON public.marketing_leads(created_at);
+CREATE INDEX IF NOT EXISTS idx_marketing_leads_status ON public.marketing_leads(status);
+CREATE INDEX IF NOT EXISTS idx_marketing_leads_lead_source ON public.marketing_leads(lead_source);
+CREATE INDEX IF NOT EXISTS idx_marketing_leads_company ON public.marketing_leads(company);
+CREATE INDEX IF NOT EXISTS idx_marketing_leads_investment_stage ON public.marketing_leads(investment_stage);
 
--- Add an index on lead_source for reporting
-CREATE INDEX IF NOT EXISTS idx_marketing_leads_source ON marketing_leads (lead_source);
-
--- Add an index on created_at for date-based queries
-CREATE INDEX IF NOT EXISTS idx_marketing_leads_created_at ON marketing_leads (created_at);
-
--- Add a function to update the updated_at timestamp
-CREATE OR REPLACE FUNCTION update_modified_column()
+-- Trigger function to update the updated_at timestamp
+CREATE OR REPLACE FUNCTION update_marketing_leads_updated_at()
 RETURNS TRIGGER AS $$
 BEGIN
-    NEW.updated_at = NOW();
+    NEW.updated_at = CURRENT_TIMESTAMP;
     RETURN NEW;
 END;
-$$ LANGUAGE 'plpgsql';
+$$ LANGUAGE plpgsql;
 
--- Create a trigger to automatically update the updated_at column
-DROP TRIGGER IF EXISTS set_marketing_leads_updated_at ON marketing_leads;
-CREATE TRIGGER set_marketing_leads_updated_at
-BEFORE UPDATE ON marketing_leads
-FOR EACH ROW
-EXECUTE FUNCTION update_modified_column();
+-- Trigger to call the function before each update
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_trigger WHERE tgname = 'trigger_update_marketing_leads_updated_at'
+    ) THEN
+        CREATE TRIGGER trigger_update_marketing_leads_updated_at
+        BEFORE UPDATE ON public.marketing_leads
+        FOR EACH ROW
+        EXECUTE FUNCTION update_marketing_leads_updated_at();
+    END IF;
+END
+$$;
 
--- If this script is used for migrations, add a comment about the version
-COMMENT ON TABLE marketing_leads IS 'Table to store marketing leads. Version 1.0 - Initial creation';
-
--- Sample query to insert a lead (commented out - for reference)
-/*
-INSERT INTO marketing_leads (
-  first_name, 
-  last_name, 
-  email, 
-  company, 
-  job_title, 
-  lead_source, 
-  utm_source, 
-  utm_medium, 
-  utm_campaign,
-  subscribed_to_newsletter
-) VALUES (
-  'John', 
-  'Doe', 
-  'john.doe@example.com', 
-  'Example Corp', 
-  'CTO', 
-  'website', 
-  'google', 
-  'cpc', 
-  'spring_campaign',
-  TRUE
-);
-*/
+-- Add comments
+COMMENT ON TABLE public.marketing_leads IS 'Table to store marketing leads and their information';
+COMMENT ON COLUMN public.marketing_leads.id IS 'Unique identifier for the lead';
+COMMENT ON COLUMN public.marketing_leads.email IS 'Email address of the lead (unique)';
+COMMENT ON COLUMN public.marketing_leads.name IS 'Full name of the lead';
+COMMENT ON COLUMN public.marketing_leads.company IS 'Company name of the lead';
+COMMENT ON COLUMN public.marketing_leads.title IS 'Job title of the lead';
+COMMENT ON COLUMN public.marketing_leads.company_size IS 'Size of the company the lead works for';
+COMMENT ON COLUMN public.marketing_leads.investment_stage IS 'The investment stage the lead is interested in';
+COMMENT ON COLUMN public.marketing_leads.fund_size IS 'Fund size range of the lead';
+COMMENT ON COLUMN public.marketing_leads.lead_source IS 'Source of the lead (website, event, referral, etc.)';
+COMMENT ON COLUMN public.marketing_leads.lead_campaign IS 'Campaign that generated the lead';
+COMMENT ON COLUMN public.marketing_leads.lead_medium IS 'Medium that generated the lead';
+COMMENT ON COLUMN public.marketing_leads.is_subscribed IS 'Whether the lead is subscribed to marketing emails';
+COMMENT ON COLUMN public.marketing_leads.notes IS 'Additional notes about the lead';
+COMMENT ON COLUMN public.marketing_leads.created_at IS 'When the lead was created';
+COMMENT ON COLUMN public.marketing_leads.updated_at IS 'When the lead was last updated';
+COMMENT ON COLUMN public.marketing_leads.last_contacted_at IS 'When the lead was last contacted';
+COMMENT ON COLUMN public.marketing_leads.status IS 'Current status of the lead (new, contacted, qualified, etc.)';
+COMMENT ON COLUMN public.marketing_leads.assigned_to IS 'Person assigned to this lead';
+COMMENT ON COLUMN public.marketing_leads.utm_source IS 'UTM source parameter from the URL';
+COMMENT ON COLUMN public.marketing_leads.utm_medium IS 'UTM medium parameter from the URL';
+COMMENT ON COLUMN public.marketing_leads.utm_campaign IS 'UTM campaign parameter from the URL';
+COMMENT ON COLUMN public.marketing_leads.utm_term IS 'UTM term parameter from the URL';
+COMMENT ON COLUMN public.marketing_leads.utm_content IS 'UTM content parameter from the URL';
+COMMENT ON COLUMN public.marketing_leads.referrer_url IS 'Referrer URL if available';
+COMMENT ON COLUMN public.marketing_leads.first_page_visited IS 'First page the lead visited';
+COMMENT ON COLUMN public.marketing_leads.user_agent IS 'User agent of the lead';
+COMMENT ON COLUMN public.marketing_leads.ip_address IS 'IP address of the lead';
+COMMENT ON COLUMN public.marketing_leads.country IS 'Country of the lead based on IP';
+COMMENT ON COLUMN public.marketing_leads.city IS 'City of the lead based on IP';
