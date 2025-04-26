@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="240" height="200" viewBox="0 0 240 200" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <path d="M196 132.5H44C40.134 132.5 37 129.366 37 125.5V44C37 40.134 40.134 37 44 37H196C199.866 37 203 40.134 203 44V125.5C203 129.366 199.866 132.5 196 132.5Z" fill="#E9ECEF"/>
+  <rect x="51" y="52" width="60" height="66" rx="3" fill="white"/>
+  <rect x="60" y="58" width="42" height="4" rx="2" fill="#CED4DA"/>
+  <rect x="60" y="68" width="32" height="4" rx="2" fill="#CED4DA"/>
+  <rect x="60" y="78" width="36" height="4" rx="2" fill="#E9ECEF"/>
+  <rect x="60" y="88" width="28" height="4" rx="2" fill="#E9ECEF"/>
+  <rect x="60" y="98" width="42" height="4" rx="2" fill="#E9ECEF"/>
+  <rect x="60" y="108" width="32" height="4" rx="2" fill="#E9ECEF"/>
+  <rect x="126" y="52" width="60" height="66" rx="3" fill="white"/>
+  <rect x="135" y="58" width="42" height="4" rx="2" fill="#CED4DA"/>
+  <rect x="135" y="68" width="32" height="4" rx="2" fill="#CED4DA"/>
+  <rect x="135" y="78" width="36" height="4" rx="2" fill="#E9ECEF"/>
+  <rect x="135" y="88" width="28" height="4" rx="2" fill="#E9ECEF"/>
+  <rect x="135" y="98" width="42" height="4" rx="2" fill="#E9ECEF"/>
+  <rect x="135" y="108" width="32" height="4" rx="2" fill="#E9ECEF"/>
+  <path d="M137 158C137 141.431 150.431 128 167 128V158H137Z" fill="#CED4DA"/>
+  <path d="M167 128C183.569 128 197 141.431 197 158H167V128Z" fill="#6C757D"/>
+  <circle cx="167" cy="158" r="30" fill="#E9ECEF"/>
+  <path d="M167 128V158M167 158H197M167 158H137" stroke="#ADB5BD" stroke-width="2" stroke-linecap="round"/>
+  <path d="M172.121 152.879C172.512 152.488 172.732 151.953 172.732 151.394C172.732 150.836 172.512 150.3 172.121 149.909C171.73 149.519 171.194 149.298 170.636 149.298C170.077 149.298 169.541 149.519 169.151 149.909L161.5 157.56L159.849 155.909C159.458 155.519 158.923 155.298 158.364 155.298C157.806 155.298 157.27 155.519 156.879 155.909C156.488 156.3 156.268 156.836 156.268 157.394C156.268 157.953 156.488 158.488 156.879 158.879L160.015 162.015C160.21 162.21 160.441 162.365 160.695 162.47C160.949 162.575 161.223 162.63 161.5 162.63C161.777 162.63 162.051 162.575 162.305 162.47C162.559 162.365 162.79 162.21 162.985 162.015L172.121 152.879Z" fill="#0ca5e9"/>
+</svg>
