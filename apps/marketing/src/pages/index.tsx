@@ -99,7 +99,7 @@ export default function Home() {
                           <div className="w-2/3">
                             <div className="h-4 bg-gray-200 rounded-full overflow-hidden">
                               <div className="h-full bg-primary-600 w-0" style={{animation: 'growWidth 1.5s ease-out 0.7s forwards', width: 0}}>
-                                <style jsx>{`
+                                <style>{`
                                   @keyframes growWidth {
                                     from { width: 0; }
                                     to { width: 85%; }
@@ -114,7 +114,7 @@ export default function Home() {
                           <div className="w-2/3">
                             <div className="h-4 bg-gray-200 rounded-full overflow-hidden">
                               <div className="h-full bg-primary-600 w-0" style={{animation: 'growWidth2 1.5s ease-out 0.9s forwards', width: 0}}>
-                                <style jsx>{`
+                                <style>{`
                                   @keyframes growWidth2 {
                                     from { width: 0; }
                                     to { width: 65%; }
@@ -129,7 +129,7 @@ export default function Home() {
                           <div className="w-2/3">
                             <div className="h-4 bg-gray-200 rounded-full overflow-hidden">
                               <div className="h-full bg-primary-600 w-0" style={{animation: 'growWidth3 1.5s ease-out 1.1s forwards', width: 0}}>
-                                <style jsx>{`
+                                <style>{`
                                   @keyframes growWidth3 {
                                     from { width: 0; }
                                     to { width: 40%; }

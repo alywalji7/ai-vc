@@ -1,7 +1,6 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  swcMinify: true,
   
   images: {
     domains: ['images.unsplash.com'],
@@ -78,13 +77,13 @@ const nextConfig = {
   // Transpile some dependencies
   transpilePackages: [],
   
-  // Use SWC for compilation and minification
+  // Enable optimizations
   compiler: {
     removeConsole: process.env.NODE_ENV === 'production',
     styledComponents: false,
   },
   
-  // Enable React 18 features
+  // Enable React features
   experimental: {
     optimizeCss: true,
   },

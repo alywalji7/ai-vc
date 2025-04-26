@@ -4,7 +4,10 @@ import Link from 'next/link';
 import { trpc } from '@/lib/trpc/client';
 
 export default function HomePage() {
-  const { data: fundPerformance, isLoading } = trpc.dashboard.getFundPerformance.useQuery();
+  const { data: fundsData, isLoading } = trpc.dashboard.getFundPerformance.useQuery();
+
+  // Get the first fund from the array for display
+  const fundPerformance = fundsData && fundsData.length > 0 ? fundsData[0] : null;
 
   const formatCurrency = (value: number) => {
     if (value >= 1000000) {
@@ -49,13 +52,13 @@ export default function HomePage() {
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow p-6">
             <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Fund Value</h3>
             <p className="text-2xl font-bold">{formatCurrency(fundPerformance?.nav || 0)}</p>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">TVPI: {fundPerformance?.tvpi.toFixed(2)}x</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">TVPI: {fundPerformance?.tvpi ? fundPerformance.tvpi.toFixed(2) : '0.00'}x</p>
           </div>
           
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow p-6">
             <h3 className="text-sm font-medium text-gray-500 dark:text-gray-400">Net IRR</h3>
             <p className="text-2xl font-bold">{formatPercentage(fundPerformance?.irr || 0)}</p>
-            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">DPI: {fundPerformance?.dpi.toFixed(2)}x</p>
+            <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">DPI: {fundPerformance?.dpi ? fundPerformance.dpi.toFixed(2) : '0.00'}x</p>
           </div>
         </div>
       )}
