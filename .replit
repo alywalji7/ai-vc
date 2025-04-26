@@ -64,6 +64,10 @@ args = "Beta Feedback Service"
 task = "workflow.run"
 args = "Billing Service"
 
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Marketing Site"
+
 [[workflows.workflow]]
 name = "Frontend Service"
 author = "agent"
@@ -258,6 +262,15 @@ task = "packager.installForAll"
 task = "shell.exec"
 args = "cd services/billing && pip install -r requirements.txt && python main.py"
 waitForPort = 8300
+
+[[workflows.workflow]]
+name = "Marketing Site"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd apps/marketing && npm install && npm run dev -- -p 5001"
+waitForPort = 5001
 
 [deployment]
 run = ["sh", "-c", "cd services/frontend && npm install && npm run dev -- -p 5000"]

@@ -12,20 +12,28 @@ export default function Home() {
   return (
     <Layout>
       {/* Hero Section */}
-      <section className="hero-gradient text-white">
-        <div className="container-lg mx-auto py-16 md:py-24">
+      <section className="hero-gradient text-white overflow-hidden relative">
+        {/* Animated particles */}
+        <div className="absolute inset-0 overflow-hidden opacity-20">
+          <div className="absolute top-10 left-10 w-20 h-20 rounded-full bg-white/20 animate-pulse-slow"></div>
+          <div className="absolute top-[20%] right-[15%] w-32 h-32 rounded-full bg-white/10 animate-pulse-slow" style={{animationDelay: '1s'}}></div>
+          <div className="absolute bottom-[30%] left-[25%] w-16 h-16 rounded-full bg-white/15 animate-pulse-slow" style={{animationDelay: '2s'}}></div>
+          <div className="absolute bottom-[10%] right-[10%] w-24 h-24 rounded-full bg-white/10 animate-pulse-slow" style={{animationDelay: '1.5s'}}></div>
+        </div>
+        
+        <div className="container-lg mx-auto py-16 md:py-24 relative z-10">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8 items-center">
             <div className="space-y-6 md:pr-8">
-              <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold leading-tight">
+              <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold leading-tight fade-in-up">
                 AI-Driven Investment Intelligence Platform
               </h1>
-              <p className="text-lg md:text-xl text-gray-100">
+              <p className="text-lg md:text-xl text-gray-100 fade-in-up-delay-1">
                 Transform complex financial data into actionable insights through sophisticated data ingestion and graph-based analysis.
               </p>
-              <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 pt-4">
+              <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 pt-4 fade-in-up-delay-2">
                 <a 
                   href="https://app.aivc.com/signup" 
-                  className="btn btn-secondary btn-lg"
+                  className="btn btn-secondary btn-lg relative overflow-hidden data-flow"
                   onClick={() => trackCTAClick('hero_get_started')}
                 >
                   Get Started
@@ -38,15 +46,15 @@ export default function Home() {
                   Request Demo
                 </Link>
               </div>
-              <div className="text-sm text-gray-200 pt-2">
+              <div className="text-sm text-gray-200 pt-2 fade-in-up-delay-3">
                 No credit card required. 14-day free trial.
               </div>
             </div>
-            <div className="relative hidden md:block">
-              <div className="w-full h-[500px] relative">
+            <div className="relative hidden md:block fade-in-up-delay-1">
+              <div className="w-full h-[500px] relative float-animation">
                 <div className="absolute inset-0 bg-white/10 backdrop-blur-sm rounded-lg overflow-hidden shadow-2xl">
                   <div className="p-4">
-                    <div className="bg-gradient-to-r from-primary-900/80 to-secondary-900/80 p-4 rounded-md text-white mb-4">
+                    <div className="bg-gradient-to-r from-primary-900/80 to-secondary-900/80 p-4 rounded-md text-white mb-4 pulse-animation">
                       <div className="flex items-center mb-2">
                         <svg className="w-5 h-5 mr-2" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
@@ -56,16 +64,16 @@ export default function Home() {
                       <p className="text-sm">Identified 3 promising investment opportunities in emerging AI infrastructure.</p>
                     </div>
                     
-                    <div className="bg-white/95 rounded-md p-4 shadow-md mb-4">
+                    <div className="bg-white/95 rounded-md p-4 shadow-md mb-4 data-flow">
                       <h4 className="font-semibold text-gray-900 mb-2">Portfolio Performance</h4>
                       <div className="h-40 bg-gray-100 rounded mb-2 flex items-center justify-center">
                         <div className="w-full h-full flex items-end justify-between px-4 pt-4">
-                          <div className="w-1/6 h-[30%] bg-primary-600 rounded-t"></div>
-                          <div className="w-1/6 h-[60%] bg-primary-600 rounded-t"></div>
-                          <div className="w-1/6 h-[45%] bg-primary-600 rounded-t"></div>
-                          <div className="w-1/6 h-[80%] bg-primary-600 rounded-t"></div>
-                          <div className="w-1/6 h-[70%] bg-primary-600 rounded-t"></div>
-                          <div className="w-1/6 h-[90%] bg-primary-600 rounded-t"></div>
+                          <div className="w-1/6 h-[30%] bg-primary-600 rounded-t" style={{animation: 'fadeInUp 1s ease-out 0.1s forwards', opacity: 0}}></div>
+                          <div className="w-1/6 h-[60%] bg-primary-600 rounded-t" style={{animation: 'fadeInUp 1s ease-out 0.2s forwards', opacity: 0}}></div>
+                          <div className="w-1/6 h-[45%] bg-primary-600 rounded-t" style={{animation: 'fadeInUp 1s ease-out 0.3s forwards', opacity: 0}}></div>
+                          <div className="w-1/6 h-[80%] bg-primary-600 rounded-t" style={{animation: 'fadeInUp 1s ease-out 0.4s forwards', opacity: 0}}></div>
+                          <div className="w-1/6 h-[70%] bg-primary-600 rounded-t" style={{animation: 'fadeInUp 1s ease-out 0.5s forwards', opacity: 0}}></div>
+                          <div className="w-1/6 h-[90%] bg-primary-600 rounded-t" style={{animation: 'fadeInUp 1s ease-out 0.6s forwards', opacity: 0}}></div>
                         </div>
                       </div>
                       <div className="grid grid-cols-3 gap-2 text-sm">
@@ -90,7 +98,14 @@ export default function Home() {
                         <div className="flex items-center">
                           <div className="w-2/3">
                             <div className="h-4 bg-gray-200 rounded-full overflow-hidden">
-                              <div className="h-full bg-primary-600 w-[85%]"></div>
+                              <div className="h-full bg-primary-600 w-0" style={{animation: 'growWidth 1.5s ease-out 0.7s forwards', width: 0}}>
+                                <style jsx>{`
+                                  @keyframes growWidth {
+                                    from { width: 0; }
+                                    to { width: 85%; }
+                                  }
+                                `}</style>
+                              </div>
                             </div>
                           </div>
                           <div className="ml-3 text-sm font-medium text-gray-900">Series A</div>
@@ -98,7 +113,14 @@ export default function Home() {
                         <div className="flex items-center">
                           <div className="w-2/3">
                             <div className="h-4 bg-gray-200 rounded-full overflow-hidden">
-                              <div className="h-full bg-primary-600 w-[65%]"></div>
+                              <div className="h-full bg-primary-600 w-0" style={{animation: 'growWidth2 1.5s ease-out 0.9s forwards', width: 0}}>
+                                <style jsx>{`
+                                  @keyframes growWidth2 {
+                                    from { width: 0; }
+                                    to { width: 65%; }
+                                  }
+                                `}</style>
+                              </div>
                             </div>
                           </div>
                           <div className="ml-3 text-sm font-medium text-gray-900">Series B</div>
@@ -106,7 +128,14 @@ export default function Home() {
                         <div className="flex items-center">
                           <div className="w-2/3">
                             <div className="h-4 bg-gray-200 rounded-full overflow-hidden">
-                              <div className="h-full bg-primary-600 w-[40%]"></div>
+                              <div className="h-full bg-primary-600 w-0" style={{animation: 'growWidth3 1.5s ease-out 1.1s forwards', width: 0}}>
+                                <style jsx>{`
+                                  @keyframes growWidth3 {
+                                    from { width: 0; }
+                                    to { width: 40%; }
+                                  }
+                                `}</style>
+                              </div>
                             </div>
                           </div>
                           <div className="ml-3 text-sm font-medium text-gray-900">Series C</div>
