@@ -13,6 +13,8 @@ class SourceType(str, Enum):
     LINKEDIN = "linkedin"
     PRODUCT_HUNT = "product_hunt"
     SEC_FORM_D = "sec_form_d"
+    ANGELLIST = "angellist"
+    YC_LAUNCH = "yc_launch"
 
 
 class EntityType(str, Enum):
@@ -28,6 +30,8 @@ class EntityType(str, Enum):
     FILING = "filing"
     LAUNCH_EVENT = "launch_event"
     RAISE_EVENT = "raise_event"
+    ANGEL_DEAL = "angel_deal"
+    YC_COMPANY = "yc_company"
 
 
 class RelationshipType(str, Enum):

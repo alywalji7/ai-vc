@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AI.VC Scout</title>
+  <style>
+    body {
+      width: 300px;
+      font-family: Arial, sans-serif;
+      padding: 15px;
+      margin: 0;
+    }
+    .header {
+      display: flex;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+    .header img {
+      width: 36px;
+      height: 36px;
+      margin-right: 10px;
+    }
+    .header h1 {
+      font-size: 18px;
+      margin: 0;
+    }
+    .form-group {
+      margin-bottom: 15px;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    input {
+      width: 100%;
+      padding: 8px;
+      border: 1px solid #ccc;
+      border-radius: 4px;
+      box-sizing: border-box;
+    }
+    button {
+      width: 100%;
+      padding: 10px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    button:hover {
+      background-color: #45a049;
+    }
+    button:disabled {
+      background-color: #cccccc;
+      cursor: not-allowed;
+    }
+    .status {
+      margin-top: 15px;
+      padding: 10px;
+      border-radius: 4px;
+      text-align: center;
+    }
+    .status.success {
+      background-color: #d4edda;
+      color: #155724;
+    }
+    .status.error {
+      background-color: #f8d7da;
+      color: #721c24;
+    }
+    .login-container {
+      display: none;
+    }
+    .logout-container {
+      display: none;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <img src="images/icon48.png" alt="AI.VC Logo">
+    <h1>AI.VC Scout</h1>
+  </div>
+  
+  <div id="loginContainer" class="login-container">
+    <div class="form-group">
+      <label for="email">Email:</label>
+      <input type="email" id="email" placeholder="Enter your email">
+    </div>
+    <div class="form-group">
+      <label for="password">Password:</label>
+      <input type="password" id="password" placeholder="Enter your password">
+    </div>
+    <button id="loginButton">Log In</button>
+    <div id="loginStatus" class="status"></div>
+  </div>
+  
+  <div id="logoutContainer" class="logout-container">
+    <p>You are logged in. Right-click on any page and select "Save to AI.VC" to scout a company.</p>
+    <button id="logoutButton">Log Out</button>
+  </div>
+  
+  <script src="popup.js"></script>
+</body>
+</html>

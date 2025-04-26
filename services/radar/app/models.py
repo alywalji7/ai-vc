@@ -2,8 +2,10 @@
 Pydantic models for API requests and responses.
 """
 from datetime import datetime
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Literal
 from pydantic import BaseModel, Field
+
+from .database import FeedbackType
 
 
 class CompanyBase(BaseModel):
@@ -137,3 +139,43 @@ class ModelMetadata(BaseModel):
     cv_auc_mean: float
     cv_auc_std: float
     top_features: List[str]
+
+
+class FeedbackRequest(BaseModel):
+    """Request model for LP feedback."""
+    lp_id: str
+    company_id: str
+    feedback_type: str = Field(..., description="Feedback type: 'up' or 'down'")
+
+    class Config:
+        """Pydantic config."""
+        schema_extra = {
+            "example": {
+                "lp_id": "lp-123",
+                "company_id": "company-456",
+                "feedback_type": "up"
+            }
+        }
+
+
+class FeedbackResponse(BaseModel):
+    """Response model for LP feedback."""
+    id: int
+    lp_id: str
+    company_id: str
+    feedback_type: str
+    created_at: datetime
+
+    class Config:
+        """Pydantic config."""
+        from_attributes = True
+
+
+class FeedbackStats(BaseModel):
+    """Statistics about LP feedback usage in model training."""
+    total_feedback_count: int
+    used_in_training_count: int 
+    feedback_weight_percent: float
+    latest_model_version: str
+    latest_model_auc: float
+    improvement_from_feedback: Optional[float] = None

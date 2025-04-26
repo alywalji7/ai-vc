@@ -2,8 +2,9 @@
 Database connection and models for the Radar service.
 """
 import os
+import enum
 from datetime import datetime
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Boolean, ForeignKey
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Boolean, ForeignKey, Enum
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship
 from dotenv import load_dotenv
@@ -13,11 +14,24 @@ load_dotenv()
 # Get database URL from environment
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
-# Create SQLAlchemy engine
-engine = create_engine(DATABASE_URL)
+# Create SQLAlchemy engine with proper SSL settings
+engine = create_engine(
+    DATABASE_URL,
+    pool_pre_ping=True,
+    pool_recycle=300,
+    connect_args={
+        "sslmode": "prefer"  # Use SSL if available, fall back if not
+    }
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
 Base = declarative_base()
+
+
+class FeedbackType(enum.Enum):
+    """Enum for LP feedback types."""
+    UP = "up"
+    DOWN = "down"
 
 
 class Company(Base):
@@ -172,6 +186,23 @@ class ModelVersion(Base):
     
     def __repr__(self):
         return f"<ModelVersion(id={self.id}, model_version='{self.model_version}', auc={self.auc_score}, in_production={self.in_production})>"
+
+
+class LPFeedback(Base):
+    """
+    LP feedback on companies for active learning.
+    """
+    __tablename__ = "lp_feedback"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    lp_id = Column(String, nullable=False, index=True)
+    company_id = Column(String, ForeignKey("companies.id"), nullable=False, index=True)
+    feedback_type = Column(Enum(FeedbackType), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    used_in_training = Column(Boolean, default=False)
+    
+    def __repr__(self):
+        return f"<LPFeedback(id={self.id}, lp_id='{self.lp_id}', company_id='{self.company_id}', feedback_type={self.feedback_type})>"
 
 
 # Create all tables in the database

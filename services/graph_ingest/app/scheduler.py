@@ -14,7 +14,7 @@ from typing import Dict, Any, List, Optional
 import schedule
 
 from app.db import get_session
-from app.ingestors import CrunchbaseIngestor, GitHubIngestor
+from app.ingestors import CrunchbaseIngestor, GitHubIngestor, AngelListConnector, YCLaunchConnector
 from app.metrics import calculate_and_update_metrics, IngestTimer
 
 # Set up logging
@@ -134,6 +134,74 @@ def run_scheduler():
             logger.error(f"Error in scheduler loop: {str(e)}")
             time.sleep(5)  # Sleep longer on error
 
+def ingest_angellist_deals():
+    """
+    Ingest new deals from AngelList.
+    
+    This function retrieves new deals from AngelList and ingests their
+    data into the knowledge graph.
+    """
+    logger.info("Starting AngelList deal ingestion job")
+    
+    try:
+        # Get database session
+        db_session = get_session()
+        
+        # Create ingestor
+        ingestor = AngelListConnector(db_session)
+        
+        with IngestTimer('angellist'):
+            # Run the ingestion process
+            result = ingestor.ingest()
+            
+            logger.info(f"AngelList ingestion completed: {result.get('entities_created', 0)} entities created, "
+                        f"{result.get('relationships_created', 0)} relationships created")
+                        
+        # Update metrics
+        calculate_and_update_metrics(db_session)
+        
+        # Close session
+        db_session.close()
+        
+        logger.info("Completed AngelList ingestion job")
+        
+    except Exception as e:
+        logger.error(f"Error in AngelList ingestion job: {str(e)}")
+
+def ingest_yc_launches():
+    """
+    Ingest YC company launches.
+    
+    This function retrieves YC company launches from the YC RSS feed and creates
+    entities and relationships in the knowledge graph.
+    """
+    logger.info("Starting YC Launch ingestion job")
+    
+    try:
+        # Get database session
+        db_session = get_session()
+        
+        # Create ingestor
+        ingestor = YCLaunchConnector(db_session)
+        
+        with IngestTimer('yc_launch'):
+            # Run the ingestion process, looking back 30 days by default
+            result = ingestor.ingest()
+            
+            logger.info(f"YC Launch ingestion completed: {result.get('entities_created', 0)} entities created, "
+                        f"{result.get('relationships_created', 0)} relationships created")
+                        
+        # Update metrics
+        calculate_and_update_metrics(db_session)
+        
+        # Close session
+        db_session.close()
+        
+        logger.info("Completed YC Launch ingestion job")
+        
+    except Exception as e:
+        logger.error(f"Error in YC Launch ingestion job: {str(e)}")
+
 def start_scheduler() -> threading.Thread:
     """
     Start the scheduler in a background thread.
@@ -150,6 +218,14 @@ def start_scheduler() -> threading.Thread:
     # Schedule GitHub trending ingestion to run daily at 2 AM
     schedule.every().day.at("02:00").do(ingest_github_trending)
     logger.info("Scheduled GitHub trending ingestion to run daily at 02:00")
+    
+    # Schedule AngelList deals ingestion to run daily at 3 AM
+    schedule.every().day.at("03:00").do(ingest_angellist_deals)
+    logger.info("Scheduled AngelList deals ingestion to run daily at 03:00")
+    
+    # Schedule YC Launch ingestion to run daily at 4 AM
+    schedule.every().day.at("04:00").do(ingest_yc_launches)
+    logger.info("Scheduled YC Launch ingestion to run daily at 04:00")
     
     # Also run metrics update every hour
     def update_metrics_job():

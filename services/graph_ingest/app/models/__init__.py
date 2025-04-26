@@ -11,11 +11,19 @@ from .crunchbase import (
     CrunchbaseFounder, CrunchbaseFundingRound,
     CrunchbaseFundedBy, CrunchbaseParticipatedIn
 )
+from .angellist import (
+    AngelDeal, AngelDealRelationship
+)
+from .yc_launch import (
+    YCCompany, YCLaunchRelationship
+)
 
 __all__ = [
     "SourceType", "EntityType", "RelationshipType",
     "BaseEntity", "BaseRelationship",
     "GitHubUser", "GitHubRepository", "GitHubContributor", "GitHubOwnership",
     "CrunchbaseCompany", "CrunchbasePerson", "CrunchbaseFounder",
-    "CrunchbaseFundingRound", "CrunchbaseFundedBy", "CrunchbaseParticipatedIn"
+    "CrunchbaseFundingRound", "CrunchbaseFundedBy", "CrunchbaseParticipatedIn",
+    "AngelDeal", "AngelDealRelationship",
+    "YCCompany", "YCLaunchRelationship"
 ]

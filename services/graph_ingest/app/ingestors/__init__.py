@@ -5,6 +5,8 @@ from .edgar import EdgarIngestor
 from .patentsview import PatentsViewIngestor
 from .product_hunt import ProductHuntConnector
 from .form_d import EdgarFormDConnector
+from .angellist import AngelListConnector
+from .yc_launch import YCLaunchConnector
 
 __all__ = [
     "BaseIngestor", 
@@ -13,5 +15,7 @@ __all__ = [
     "EdgarIngestor",
     "PatentsViewIngestor",
     "ProductHuntConnector",
-    "EdgarFormDConnector"
+    "EdgarFormDConnector",
+    "AngelListConnector",
+    "YCLaunchConnector"
 ]

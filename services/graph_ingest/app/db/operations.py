@@ -163,3 +163,21 @@ def get_relationships_for_entity(db: Session, entity_id: str,
         return db.query(Relationship).filter(Relationship.from_entity_id == entity_id).offset(skip).limit(limit).all()
     else:
         return db.query(Relationship).filter(Relationship.to_entity_id == entity_id).offset(skip).limit(limit).all()
+
+
+def get_entity_by_source_id(db: Session, source_type: Any, source_id: str) -> Optional[Entity]:
+    """
+    Get an entity by source type and source ID
+    
+    Args:
+        db: Database session
+        source_type: Source type (enum value)
+        source_id: Source ID
+        
+    Returns:
+        Entity or None if not found
+    """
+    return db.query(Entity).filter(
+        Entity.source == source_type.value,
+        Entity.source_id == source_id
+    ).first()

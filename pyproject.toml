@@ -61,6 +61,8 @@ plaid-python = "^30.0.0"
 apscheduler = "^3.11.0"
 reportlab = "^4.4.0"
 pdfkit = "^1.0.0"
+feedparser = "^6.0.11"
+beautifulsoup4 = "^4.13.4"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0.0"
