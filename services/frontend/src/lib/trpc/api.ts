@@ -1,13 +1,25 @@
-import { createTRPCReact } from '@trpc/react-query';
+'use client';
+
+import { httpBatchLink } from '@trpc/client';
+import { createTRPCNext } from '@trpc/next';
+import superjson from 'superjson';
 import { startupRouter } from './routers/startup';
 
-// Create the appRouter type with all of our router endpoints
-export type AppRouter = typeof appRouter;
-
-// Create a combined router with all of our router endpoints
-export const appRouter = {
-  startup: startupRouter,
+// Define the type of our routers
+type AppRouter = {
+  startup: typeof startupRouter,
 };
 
-// Create the tRPC React hooks
-export const api = createTRPCReact<AppRouter>();
+// Create the TRPC client
+export const api = createTRPCNext<AppRouter>({
+  config() {
+    return {
+      transformer: superjson,
+      links: [
+        httpBatchLink({
+          url: '/api/trpc',
+        }),
+      ],
+    };
+  },
+});

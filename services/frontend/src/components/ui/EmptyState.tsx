@@ -1,56 +1,48 @@
-import React from 'react';
-import Image from 'next/image';
-import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+'use client';
 
-type EmptyStateProps = {
+import React from 'react';
+import Link from 'next/link';
+import Image from 'next/image';
+import { Button } from './button';
+
+interface EmptyStateProps {
   title: string;
-  description?: string;
+  description: string;
   actionLabel?: string;
   actionHref?: string;
-  onAction?: () => void;
-  className?: string;
   imageUrl?: string;
-};
+  className?: string;
+}
 
 const EmptyState: React.FC<EmptyStateProps> = ({
   title,
   description,
   actionLabel,
   actionHref,
-  onAction,
+  imageUrl,
   className,
-  imageUrl = '/empty-state-illustration.svg',
 }) => {
   return (
-    <div
-      className={cn(
-        'flex flex-col items-center justify-center p-6 text-center rounded-lg border border-dashed border-gray-300 bg-gray-50 dark:bg-gray-900 dark:border-gray-700',
-        className
-      )}
-    >
+    <div className={`flex flex-col items-center justify-center text-center p-8 ${className}`}>
       {imageUrl && (
-        <div className="mb-4 relative w-48 h-48">
+        <div className="relative w-40 h-40 mb-6">
           <Image 
             src={imageUrl} 
             alt="Empty state illustration" 
-            fill
+            fill 
             className="object-contain"
           />
         </div>
       )}
-      <h3 className="text-lg font-medium mb-2">{title}</h3>
-      {description && (
-        <p className="text-sm text-muted-foreground mb-4 max-w-md">
-          {description}
-        </p>
-      )}
-      {actionLabel && (actionHref || onAction) && (
-        <Button
-          onClick={onAction}
-          {...(actionHref && { as: 'a', href: actionHref })}
-        >
-          {actionLabel}
+      
+      <h3 className="text-xl font-semibold mb-2">{title}</h3>
+      <p className="text-muted-foreground mb-6 max-w-md mx-auto">{description}</p>
+      
+      {actionLabel && actionHref && (
+        <Button asChild>
+          <Link href={actionHref}>
+            {actionLabel}
+          </Link>
         </Button>
       )}
     </div>

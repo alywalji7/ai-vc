@@ -1,119 +1,135 @@
+'use client';
+
 import React from 'react';
+import Link from 'next/link';
 import Image from 'next/image';
 import { Card, CardContent, CardFooter, CardHeader } from '@/components/ui/card';
-import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
-import { CaretUpIcon } from '@radix-ui/react-icons';
+import { formatCurrency, formatPercent, formatDate, truncateText } from '@/lib/utils';
 
-export type Startup = {
+export interface StartupInfo {
   id: string;
   name: string;
-  logoUrl: string | null;
-  sector: string;
-  radarScore: number;
-  geography: 'USA' | 'EU' | 'APAC' | 'ROW';
-  upvotes: number;
+  logoUrl: string;
   description: string;
-  founded: number;
-  website: string;
-};
+  sector: string;
+  location: string;
+  radarScore: number;
+  foundedDate: Date;
+  latestFunding?: {
+    amount: number;
+    round: string;
+    date: Date;
+  };
+}
 
-type StartupCardProps = {
-  startup: Startup;
-  onClick: (id: string) => void;
-  onUpvote: (id: string) => void;
+interface StartupCardProps {
+  startup: StartupInfo;
   className?: string;
-};
+}
 
-const StartupCard: React.FC<StartupCardProps> = ({ 
-  startup, 
-  onClick, 
-  onUpvote,
-  className 
-}) => {
-  const handleClick = () => {
-    onClick(startup.id);
+const StartupCard: React.FC<StartupCardProps> = ({ startup, className }) => {
+  // Function to determine the color based on radar score
+  const getScoreColor = (score: number): string => {
+    if (score >= 0.8) return 'text-green-600';
+    if (score >= 0.6) return 'text-yellow-600';
+    return 'text-red-600';
   };
-  
-  const handleUpvoteClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    onUpvote(startup.id);
-  };
-  
-  // Format radar score as percentage
-  const scorePercentage = Math.round(startup.radarScore * 100);
-  
-  // Determine score color based on value
-  const getScoreColor = () => {
-    if (scorePercentage >= 85) return 'text-green-600 bg-green-100';
-    if (scorePercentage >= 70) return 'text-yellow-600 bg-yellow-100';
-    return 'text-red-600 bg-red-100';
-  };
-  
+
   return (
-    <Card 
-      className={cn("cursor-pointer hover:shadow-md transition-shadow", className)}
-      onClick={handleClick}
-    >
-      <CardHeader className="p-4 pb-0 flex flex-row justify-between items-start">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-md bg-slate-100 flex items-center justify-center relative overflow-hidden">
-            {startup.logoUrl ? (
-              <Image 
-                src={startup.logoUrl} 
-                alt={startup.name} 
-                fill 
-                className="object-cover"
-              />
-            ) : (
-              <span className="text-xl font-semibold text-slate-400">
-                {startup.name.charAt(0)}
-              </span>
-            )}
+    <Card className={`overflow-hidden hover:shadow-md transition-shadow ${className}`}>
+      <CardHeader className="p-4 pb-0">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="relative h-10 w-10 rounded-md bg-gray-100 overflow-hidden">
+              {startup.logoUrl ? (
+                <Image
+                  src={startup.logoUrl}
+                  alt={`${startup.name} logo`}
+                  fill
+                  className="object-cover"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center bg-primary/10 text-primary font-bold">
+                  {startup.name.substring(0, 2).toUpperCase()}
+                </div>
+              )}
+            </div>
+            <div>
+              <h3 className="font-medium">{startup.name}</h3>
+              <div className="text-sm text-muted-foreground">{startup.sector}</div>
+            </div>
           </div>
-          <div>
-            <h3 className="font-semibold text-base">{startup.name}</h3>
-            <p className="text-sm text-muted-foreground">Est. {startup.founded}</p>
+          <div className={`text-lg font-bold ${getScoreColor(startup.radarScore)}`}>
+            {formatPercent(startup.radarScore)}
           </div>
         </div>
-        <Badge variant="outline" className={cn("ml-auto rounded-full px-2", getScoreColor())}>
-          {scorePercentage}%
-        </Badge>
       </CardHeader>
       
-      <CardContent className="p-4 pt-3">
-        <p className="text-sm line-clamp-2 min-h-[40px]">
-          {startup.description}
+      <CardContent className="p-4">
+        <p className="text-sm text-muted-foreground mb-3">
+          {truncateText(startup.description, 120)}
         </p>
-        <div className="flex gap-2 mt-3">
-          <Badge className="rounded-full text-xs">{startup.sector}</Badge>
-          <Badge variant="secondary" className="rounded-full text-xs">
-            {startup.geography}
-          </Badge>
+        
+        <div className="flex items-center justify-between text-sm">
+          <div className="flex items-center">
+            <svg 
+              xmlns="http://www.w3.org/2000/svg" 
+              className="h-4 w-4 mr-1 text-muted-foreground" 
+              fill="none" 
+              viewBox="0 0 24 24" 
+              stroke="currentColor"
+            >
+              <path 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+                strokeWidth={2} 
+                d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" 
+              />
+              <path 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+                strokeWidth={2} 
+                d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" 
+              />
+            </svg>
+            <span>{startup.location}</span>
+          </div>
+          <div className="flex items-center">
+            <svg 
+              xmlns="http://www.w3.org/2000/svg" 
+              className="h-4 w-4 mr-1 text-muted-foreground" 
+              fill="none" 
+              viewBox="0 0 24 24" 
+              stroke="currentColor"
+            >
+              <path 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+                strokeWidth={2} 
+                d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" 
+              />
+            </svg>
+            <span>Founded {formatDate(startup.foundedDate)}</span>
+          </div>
         </div>
       </CardContent>
       
-      <CardFooter className="p-4 pt-0 flex justify-between items-center">
-        <a 
-          href={startup.website} 
-          target="_blank" 
-          rel="noopener noreferrer"
-          className="text-xs text-blue-600 hover:underline"
-          onClick={(e) => e.stopPropagation()}
+      <CardFooter className="p-4 pt-0 flex justify-between border-t">
+        {startup.latestFunding ? (
+          <div className="text-sm">
+            <span className="text-muted-foreground">Latest Round:</span>{' '}
+            <span className="font-medium">{startup.latestFunding.round} · {formatCurrency(startup.latestFunding.amount)}</span>
+          </div>
+        ) : (
+          <div className="text-sm text-muted-foreground">No funding data available</div>
+        )}
+        
+        <Link 
+          href={`/startups/${startup.id}`}
+          className="text-primary text-sm font-medium hover:underline"
         >
-          {startup.website.replace(/^https?:\/\/(www\.)?/, '')}
-        </a>
-        <Button 
-          variant="ghost" 
-          size="sm"
-          className="flex items-center gap-1 text-xs" 
-          onClick={handleUpvoteClick}
-        >
-          {/* @ts-ignore - We'll fix the icon type issue later */}
-          <CaretUpIcon className="h-4 w-4" />
-          {startup.upvotes}
-        </Button>
+          View Details
+        </Link>
       </CardFooter>
     </Card>
   );
