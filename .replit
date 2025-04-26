@@ -2,7 +2,7 @@ modules = ["nodejs-20", "python-3.11", "postgresql-16", "python3"]
 
 [nix]
 channel = "stable-24_05"
-packages = ["freetype", "glibcLocales", "libxcrypt", "libyaml", "rdkafka", "wget", "zlib", "imagemagick", "gh"]
+packages = ["freetype", "gh", "glibcLocales", "imagemagick", "libxcrypt", "libyaml", "rdkafka", "wget", "zlib"]
 
 [workflows]
 runButton = "Project"
@@ -71,6 +71,10 @@ args = "Marketing Site"
 [[workflows.workflow.tasks]]
 task = "workflow.run"
 args = "Marketing Site Alternative"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Supabase API Service"
 
 [[workflows.workflow]]
 name = "Frontend Service"
@@ -284,6 +288,15 @@ author = "agent"
 task = "shell.exec"
 args = "cd apps/marketing && npx next dev -p 5050"
 waitForPort = 5050
+
+[[workflows.workflow]]
+name = "Supabase API Service"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "cd services/api && python test_api.py"
+waitForPort = 9000
 
 [deployment]
 run = ["sh", "-c", "cd services/frontend && npm install && npm run dev -- -p 5000"]
