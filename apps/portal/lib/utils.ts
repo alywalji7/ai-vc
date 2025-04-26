@@ -30,8 +30,9 @@ export function formatNumber(value: number, options: NumberFormatOptions = {}): 
   }).format(value);
 }
 
-export function formatCurrency(value: number, options: NumberFormatOptions = {}): string {
-  return formatNumber(value, {
+export function formatCurrency(value: number | undefined, options: NumberFormatOptions = {}): string {
+  // Use 0 as default value if undefined
+  return formatNumber(value ?? 0, {
     style: 'currency',
     currency: 'USD',
     minimumFractionDigits: 0,
@@ -40,8 +41,9 @@ export function formatCurrency(value: number, options: NumberFormatOptions = {})
   });
 }
 
-export function formatPercent(value: number, options: NumberFormatOptions = {}): string {
-  return formatNumber(value, {
+export function formatPercent(value: number | undefined, options: NumberFormatOptions = {}): string {
+  // Use 0 as default value if undefined
+  return formatNumber(value ?? 0, {
     style: 'percent',
     minimumFractionDigits: 0,
     maximumFractionDigits: 1,

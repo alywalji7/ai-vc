@@ -132,8 +132,8 @@ const DataTable: React.FC<DataTableProps> = ({ data, isLoading = false }) => {
                   {formatCurrency(holding.value)}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-right">
-                  <span className={`font-medium ${holding.tvpi >= 100 ? 'text-green-600' : holding.tvpi < 50 ? 'text-red-600' : 'text-yellow-600'}`}>
-                    {formatPercent(holding.tvpi / 100)}
+                  <span className={`font-medium ${(holding.tvpi ?? 0) >= 100 ? 'text-green-600' : (holding.tvpi ?? 0) < 50 ? 'text-red-600' : 'text-yellow-600'}`}>
+                    {formatPercent((holding.tvpi ?? 0) / 100)}
                   </span>
                 </td>
               </tr>
