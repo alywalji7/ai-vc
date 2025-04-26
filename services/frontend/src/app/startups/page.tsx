@@ -1,90 +1,114 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
-import { useDebounce } from '@/lib/hooks';
+import React, { useState } from 'react';
 import { api } from '@/lib/trpc/api';
-import StartupCard, { StartupInfo } from './components/StartupCard';
+import StartupCard from './components/StartupCard';
 import FilterDrawer from './components/FilterDrawer';
-import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import EmptyState from '@/components/ui/EmptyState';
+import LoadingSpinner from '@/components/ui/LoadingSpinner';
 import { Button } from '@/components/ui/button';
 import Link from 'next/link';
 
-type StartupFilters = {
-  minScore: number;
-  sectors: string[];
-  geography: 'USA' | 'Europe' | 'Asia' | 'LatAm' | 'Global';
-  fundingStage: string;
-  hasRevenueOnly: boolean;
-};
-
 export default function StartupsPage() {
-  const [filters, setFilters] = useState<StartupFilters>({
+  // Define default filter values
+  const defaultFilters = {
     minScore: 0,
     sectors: [],
-    geography: 'Global',
+    geography: 'Global' as const,
     fundingStage: 'All',
     hasRevenueOnly: false,
-  });
-  
-  const debouncedFilters = useDebounce(filters, 300);
-  
-  // Fetch startups using tRPC
+  };
+
+  // State for filter values
+  const [filters, setFilters] = useState(defaultFilters);
+
+  // Fetch startups data with the current filters
   const { data: startups, isLoading, error } = api.startup.getStartups.useQuery({
-    minScore: debouncedFilters.minScore,
-    sectors: debouncedFilters.sectors.length > 0 ? debouncedFilters.sectors : undefined,
-    geography: debouncedFilters.geography !== 'Global' ? debouncedFilters.geography : undefined,
-    hasRevenue: debouncedFilters.hasRevenueOnly ? true : undefined,
-  }, {
-    // Keep previous data while loading new data
-    keepPreviousData: true,
+    minScore: filters.minScore,
+    sectors: filters.sectors,
+    geography: filters.geography !== 'Global' ? filters.geography : undefined,
+    hasRevenue: filters.hasRevenueOnly,
   });
-  
+
   // Handle filter changes
-  const handleFiltersChange = (newFilters: StartupFilters) => {
+  const handleFiltersChange = (newFilters: typeof filters) => {
     setFilters(newFilters);
   };
-  
+
   return (
-    <div className="container mx-auto py-8">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">Startup Radar</h1>
-        <div className="flex gap-4">
-          <FilterDrawer 
-            filters={filters}
-            onFiltersChange={handleFiltersChange}
-          />
+    <div className="container mx-auto px-4 py-8">
+      <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-8">
+        <div>
+          <h1 className="text-3xl font-bold mb-2">Startup Radar</h1>
+          <p className="text-muted-foreground">
+            Discover and track promising startups in our ecosystem
+          </p>
+        </div>
+        <div className="flex items-center space-x-4 mt-4 md:mt-0">
+          {/* Filter Drawer Component */}
+          <FilterDrawer filters={filters} onFiltersChange={handleFiltersChange} />
+          
+          {/* Suggest New Startup Button */}
           <Button asChild>
-            <Link href="/startups/suggest">Suggest a Startup</Link>
+            <Link href="/startups/suggest">
+              <span className="flex items-center">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-4 w-4 mr-2"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M12 4v16m8-8H4"
+                  />
+                </svg>
+                Suggest Startup
+              </span>
+            </Link>
           </Button>
         </div>
       </div>
-      
-      {isLoading ? (
-        <div className="flex justify-center items-center h-64">
+
+      {/* Loading state */}
+      {isLoading && (
+        <div className="flex items-center justify-center h-64">
           <LoadingSpinner size="lg" />
         </div>
-      ) : error ? (
-        <div className="text-center text-red-500 py-8">
-          Error loading startups: {error.message}
+      )}
+
+      {/* Error state */}
+      {error && (
+        <div className="text-center py-10">
+          <h3 className="text-xl text-red-600 mb-2">Error loading startups</h3>
+          <p className="text-muted-foreground">
+            {error.message || 'Something went wrong. Please try again later.'}
+          </p>
         </div>
-      ) : startups && startups.length > 0 ? (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {startups.map((startup) => (
-            <StartupCard 
-              key={startup.id} 
-              startup={startup} 
-            />
-          ))}
-        </div>
-      ) : (
+      )}
+
+      {/* Empty state */}
+      {!isLoading && !error && startups && startups.length === 0 && (
         <EmptyState
           title="No startups found"
-          description="Try adjusting your filters or suggesting a new startup to add to our radar."
-          actionLabel="Suggest a Startup"
-          actionHref="/startups/suggest"
-          imageUrl="/empty-state-startups.svg"
+          description="No startups match your current filters. Try adjusting your filters to see more results."
+          imageUrl="/illustrations/empty-search.svg"
+          actionLabel="Clear Filters"
+          actionHref="#"
+          className="py-16"
         />
+      )}
+
+      {/* Grid of StartupCards */}
+      {!isLoading && !error && startups && startups.length > 0 && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {startups.map((startup) => (
+            <StartupCard key={startup.id} startup={startup} />
+          ))}
+        </div>
       )}
     </div>
   );

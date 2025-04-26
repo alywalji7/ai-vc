@@ -1,228 +1,281 @@
-'use client'
+'use client';
 
-import React, { useState } from 'react';
-import { useRouter } from 'next/navigation';
-import { api } from '@/lib/trpc/api';
+import { useState } from 'react';
+import { z } from 'zod';
+import { api } from '@/lib/trpc/provider';
 import { Button } from '@/components/ui/button';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
-import { 
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '@/components/ui/select';
-import LoadingSpinner from '@/components/ui/LoadingSpinner';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { useToast } from '@/components/ui/toast';
+
+// Define the schema for startup suggestion form
+const suggestStartupSchema = z.object({
+  name: z.string().min(1, "Name is required"),
+  website: z.string().url("Please provide a valid URL"),
+  description: z.string().min(10, "Description must be at least 10 characters"),
+  sector: z.string().min(1, "Sector is required"),
+  location: z.string().min(1, "Location is required"),
+  foundedYear: z.number().min(2000).max(new Date().getFullYear()),
+  contactEmail: z.string().email().optional(),
+});
+
+type FormData = z.infer<typeof suggestStartupSchema>;
+
+const sectors = [
+  'Fintech',
+  'Healthcare',
+  'Edtech',
+  'Enterprise SaaS',
+  'AI/ML',
+  'Blockchain',
+  'Consumer Tech',
+  'Marketplace',
+  'Climate Tech',
+  'Hardware',
+  'Cybersecurity',
+  'Other'
+];
 
 export default function SuggestStartupPage() {
-  const router = useRouter();
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [formData, setFormData] = useState({
+  const { toast } = useToast();
+  const [formData, setFormData] = useState<FormData>({
     name: '',
     website: '',
-    sector: '',
     description: '',
-    notes: '',
+    sector: '',
+    location: '',
+    foundedYear: 2023,
+    contactEmail: '',
   });
-  const [errors, setErrors] = useState<Record<string, string>>({});
   
-  // Get available sectors from API
-  const { data: sectors } = api.startup.getSectors.useQuery();
+  const [errors, setErrors] = useState<Partial<Record<keyof FormData, string>>>({});
   
-  // Handle form input changes
-  const handleInputChange = (
+  // Use the TRPC mutation
+  const suggestStartup = api.startup.suggestStartup.useMutation({
+    onSuccess: () => {
+      toast({
+        title: "Startup Suggested",
+        description: "Thank you for your suggestion! We'll review it shortly.",
+      });
+      
+      // Reset form
+      setFormData({
+        name: '',
+        website: '',
+        description: '',
+        sector: '',
+        location: '',
+        foundedYear: 2023,
+        contactEmail: '',
+      });
+      setErrors({});
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error.message || "There was an error submitting your suggestion.",
+        variant: "destructive",
+      });
+    },
+  });
+  
+  const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
   ) => {
     const { name, value } = e.target;
-    setFormData((prev) => ({ ...prev, [name]: value }));
+    setFormData((prev) => ({
+      ...prev,
+      [name]: name === 'foundedYear' ? Number(value) : value,
+    }));
     
-    // Clear error when field is edited
+    // Clear error for this field when user types
+    if (errors[name as keyof FormData]) {
+      setErrors((prev) => ({
+        ...prev,
+        [name]: undefined,
+      }));
+    }
+  };
+  
+  const handleSelectChange = (name: keyof FormData, value: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
+    
+    // Clear error for this field when user selects
     if (errors[name]) {
-      setErrors((prev) => {
-        const newErrors = { ...prev };
-        delete newErrors[name];
-        return newErrors;
-      });
+      setErrors((prev) => ({
+        ...prev,
+        [name]: undefined,
+      }));
     }
   };
   
-  // Handle sector selection
-  const handleSectorChange = (value: string) => {
-    setFormData((prev) => ({ ...prev, sector: value }));
-    
-    // Clear error when field is edited
-    if (errors.sector) {
-      setErrors((prev) => {
-        const newErrors = { ...prev };
-        delete newErrors.sector;
-        return newErrors;
-      });
-    }
-  };
-  
-  // Validate form data
-  const validateForm = (): boolean => {
-    const newErrors: Record<string, string> = {};
-    
-    if (!formData.name.trim()) {
-      newErrors.name = 'Startup name is required';
-    }
-    
-    if (!formData.website.trim()) {
-      newErrors.website = 'Website URL is required';
-    } else if (!/^https?:\/\/.+\..+/.test(formData.website)) {
-      newErrors.website = 'Please enter a valid URL (include http:// or https://)';
-    }
-    
-    if (!formData.sector) {
-      newErrors.sector = 'Please select a sector';
-    }
-    
-    setErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
-  };
-  
-  // Handle form submission
-  const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!validateForm()) {
-      return;
-    }
-    
-    setIsSubmitting(true);
-    
     try {
-      await api.startup.suggestStartup.mutate(formData);
-      router.push('/startups?suggested=true');
+      // Validate form data
+      suggestStartupSchema.parse(formData);
+      
+      // Submit the data
+      suggestStartup.mutate(formData);
     } catch (error) {
-      console.error('Failed to submit startup suggestion:', error);
-      setErrors({ form: 'Failed to submit startup suggestion. Please try again.' });
-    } finally {
-      setIsSubmitting(false);
+      if (error instanceof z.ZodError) {
+        // Convert Zod errors to a more usable format
+        const newErrors: Partial<Record<keyof FormData, string>> = {};
+        error.errors.forEach((err) => {
+          if (err.path) {
+            newErrors[err.path[0] as keyof FormData] = err.message;
+          }
+        });
+        setErrors(newErrors);
+      }
     }
   };
   
   return (
-    <div className="container py-6 max-w-2xl">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold mb-2">Suggest a Startup</h1>
-        <p className="text-muted-foreground">
-          Add a startup to our database for analysis and tracking.
-        </p>
-      </div>
-      
-      <form onSubmit={handleSubmit} className="space-y-6">
-        {errors.form && (
-          <div className="p-3 bg-red-50 border border-red-200 rounded-md text-red-600">
-            {errors.form}
-          </div>
-        )}
-        
-        <div className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">Startup Name*</Label>
-            <Input
-              id="name"
-              name="name"
-              value={formData.name}
-              onChange={handleInputChange}
-              placeholder="Enter startup name"
-              className={errors.name ? 'border-red-500' : ''}
-            />
-            {errors.name && (
-              <p className="text-red-500 text-sm">{errors.name}</p>
-            )}
-          </div>
-          
-          <div className="space-y-2">
-            <Label htmlFor="website">Website URL*</Label>
-            <Input
-              id="website"
-              name="website"
-              value={formData.website}
-              onChange={handleInputChange}
-              placeholder="https://example.com"
-              className={errors.website ? 'border-red-500' : ''}
-            />
-            {errors.website && (
-              <p className="text-red-500 text-sm">{errors.website}</p>
-            )}
-          </div>
-          
-          <div className="space-y-2">
-            <Label htmlFor="sector">Sector*</Label>
-            <Select
-              value={formData.sector}
-              onValueChange={handleSectorChange}
-            >
-              <SelectTrigger
-                id="sector"
-                className={errors.sector ? 'border-red-500' : ''}
+    <div className="container mx-auto py-10">
+      <Card className="max-w-2xl mx-auto">
+        <CardHeader>
+          <CardTitle className="text-2xl">Suggest a Startup</CardTitle>
+          <CardDescription>
+            Know an interesting startup that should be on our radar? Let us know!
+          </CardDescription>
+        </CardHeader>
+        <form onSubmit={handleSubmit}>
+          <CardContent className="grid gap-6">
+            <div className="grid gap-3">
+              <Label htmlFor="name">Startup Name</Label>
+              <Input
+                id="name"
+                name="name"
+                value={formData.name}
+                onChange={handleChange}
+                placeholder="Enter the startup name"
+              />
+              {errors.name && (
+                <p className="text-red-500 text-sm">{errors.name}</p>
+              )}
+            </div>
+            
+            <div className="grid gap-3">
+              <Label htmlFor="website">Website</Label>
+              <Input
+                id="website"
+                name="website"
+                value={formData.website}
+                onChange={handleChange}
+                placeholder="https://example.com"
+              />
+              {errors.website && (
+                <p className="text-red-500 text-sm">{errors.website}</p>
+              )}
+            </div>
+            
+            <div className="grid gap-3">
+              <Label htmlFor="description">Description</Label>
+              <Textarea
+                id="description"
+                name="description"
+                value={formData.description}
+                onChange={handleChange}
+                placeholder="What does this startup do?"
+                rows={4}
+              />
+              {errors.description && (
+                <p className="text-red-500 text-sm">{errors.description}</p>
+              )}
+            </div>
+            
+            <div className="grid gap-3">
+              <Label htmlFor="sector">Sector</Label>
+              <Select
+                value={formData.sector}
+                onValueChange={(value) => handleSelectChange('sector', value)}
               >
-                <SelectValue placeholder="Select a sector" />
-              </SelectTrigger>
-              <SelectContent>
-                {sectors?.map((sector) => (
-                  <SelectItem key={sector} value={sector}>
-                    {sector}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {errors.sector && (
-              <p className="text-red-500 text-sm">{errors.sector}</p>
-            )}
-          </div>
-          
-          <div className="space-y-2">
-            <Label htmlFor="description">Description</Label>
-            <Textarea
-              id="description"
-              name="description"
-              value={formData.description}
-              onChange={handleInputChange}
-              placeholder="Brief description of what the startup does"
-              rows={3}
-            />
-          </div>
-          
-          <div className="space-y-2">
-            <Label htmlFor="notes">Your Notes</Label>
-            <Textarea
-              id="notes"
-              name="notes"
-              value={formData.notes}
-              onChange={handleInputChange}
-              placeholder="Why are you suggesting this startup? Any additional information?"
-              rows={4}
-            />
-          </div>
-        </div>
-        
-        <div className="flex justify-end pt-4 gap-3">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => router.push('/startups')}
-            disabled={isSubmitting}
-          >
-            Cancel
-          </Button>
-          <Button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? (
-              <>
-                <LoadingSpinner size="sm" className="mr-2" />
-                Submitting...
-              </>
-            ) : (
-              'Submit Suggestion'
-            )}
-          </Button>
-        </div>
-      </form>
+                <SelectTrigger id="sector">
+                  <SelectValue placeholder="Select a sector" />
+                </SelectTrigger>
+                <SelectContent>
+                  {sectors.map((sector) => (
+                    <SelectItem key={sector} value={sector}>
+                      {sector}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {errors.sector && (
+                <p className="text-red-500 text-sm">{errors.sector}</p>
+              )}
+            </div>
+            
+            <div className="grid gap-3">
+              <Label htmlFor="location">Location</Label>
+              <Input
+                id="location"
+                name="location"
+                value={formData.location}
+                onChange={handleChange}
+                placeholder="City, Country"
+              />
+              {errors.location && (
+                <p className="text-red-500 text-sm">{errors.location}</p>
+              )}
+            </div>
+            
+            <div className="grid gap-3">
+              <Label htmlFor="foundedYear">Founded Year</Label>
+              <Input
+                id="foundedYear"
+                name="foundedYear"
+                type="number"
+                min={2000}
+                max={new Date().getFullYear()}
+                value={formData.foundedYear}
+                onChange={handleChange}
+              />
+              {errors.foundedYear && (
+                <p className="text-red-500 text-sm">{errors.foundedYear}</p>
+              )}
+            </div>
+            
+            <div className="grid gap-3">
+              <Label htmlFor="contactEmail">Contact Email (Optional)</Label>
+              <Input
+                id="contactEmail"
+                name="contactEmail"
+                value={formData.contactEmail}
+                onChange={handleChange}
+                placeholder="contact@example.com"
+              />
+              {errors.contactEmail && (
+                <p className="text-red-500 text-sm">{errors.contactEmail}</p>
+              )}
+            </div>
+          </CardContent>
+          <CardFooter className="flex justify-between">
+            <Button 
+              variant="outline" 
+              type="button"
+              onClick={() => history.back()}
+            >
+              Cancel
+            </Button>
+            <Button 
+              type="submit"
+              disabled={suggestStartup.isLoading} 
+              className="min-w-[120px]"
+            >
+              {suggestStartup.isLoading ? "Submitting..." : "Submit"}
+            </Button>
+          </CardFooter>
+        </form>
+      </Card>
     </div>
   );
 }

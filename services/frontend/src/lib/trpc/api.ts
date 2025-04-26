@@ -1,25 +1,11 @@
-'use client';
-
-import { httpBatchLink } from '@trpc/client';
-import { createTRPCNext } from '@trpc/next';
-import superjson from 'superjson';
 import { startupRouter } from './routers/startup';
+import { router } from './init';
 
-// Define the type of our routers
-type AppRouter = {
-  startup: typeof startupRouter,
-};
-
-// Create the TRPC client
-export const api = createTRPCNext<AppRouter>({
-  config() {
-    return {
-      transformer: superjson,
-      links: [
-        httpBatchLink({
-          url: '/api/trpc',
-        }),
-      ],
-    };
-  },
+// Create the app router that combines all routers
+export const appRouter = router({
+  startup: startupRouter,
+  // add more routers here as needed
 });
+
+// Export type router type signature for client use
+export type AppRouter = typeof appRouter;

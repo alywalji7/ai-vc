@@ -1,81 +1,115 @@
-'use client';
+'use client'
 
-import { useState, useEffect, createContext, useContext } from 'react';
+import React, { createContext, useContext, useState, useCallback } from 'react'
+import { cn } from '@/lib/utils'
 
-interface ToastProviderProps {
-  children: React.ReactNode;
-}
+// Toast types
+type ToastType = 'default' | 'success' | 'error' | 'warning' | 'destructive'
 
 interface Toast {
-  id: string;
-  title?: string;
-  description: string;
-  variant?: 'default' | 'destructive' | 'success';
+  id: string
+  title?: string
+  description?: string
+  variant?: ToastType
+  duration?: number
 }
 
 interface ToastContextType {
-  toast: (props: Omit<Toast, 'id'>) => void;
-  dismiss: (id: string) => void;
-  toasts: Toast[];
+  toasts: Toast[]
+  toast: (props: Omit<Toast, 'id'>) => void
+  dismissToast: (id: string) => void
 }
 
-const ToastContext = createContext<ToastContextType | undefined>(undefined);
+const ToastContext = createContext<ToastContextType | undefined>(undefined)
 
-export function ToastProvider({ children }: ToastProviderProps) {
-  const [toasts, setToasts] = useState<Toast[]>([]);
+export function ToastProvider({ children }: { children: React.ReactNode }) {
+  const [toasts, setToasts] = useState<Toast[]>([])
 
-  const toast = (props: Omit<Toast, 'id'>) => {
-    const id = Math.random().toString(36).substring(2, 9);
-    setToasts((prevToasts) => [...prevToasts, { id, ...props }]);
+  const toast = useCallback((props: Omit<Toast, 'id'>) => {
+    const id = Math.random().toString(36).substring(2, 9)
+    const newToast: Toast = {
+      id,
+      duration: 5000,
+      variant: 'default',
+      ...props
+    }
 
-    // Auto dismiss after 5 seconds
+    setToasts((prevToasts) => [...prevToasts, newToast])
+
+    // Auto dismiss after duration
     setTimeout(() => {
-      dismiss(id);
-    }, 5000);
-  };
+      dismissToast(id)
+    }, newToast.duration)
+  }, [])
 
-  const dismiss = (id: string) => {
-    setToasts((prevToasts) => prevToasts.filter((toast) => toast.id !== id));
-  };
+  const dismissToast = useCallback((id: string) => {
+    setToasts((prevToasts) => prevToasts.filter((toast) => toast.id !== id))
+  }, [])
 
   return (
-    <ToastContext.Provider value={{ toast, dismiss, toasts }}>
+    <ToastContext.Provider value={{ toasts, toast, dismissToast }}>
       {children}
-      {toasts.length > 0 && (
-        <div className="fixed bottom-0 right-0 p-4 z-50 flex flex-col items-end space-y-2">
-          {toasts.map((toast) => (
-            <div
-              key={toast.id}
-              className={`rounded-md border p-4 shadow-md transition-all max-w-sm ${
-                toast.variant === 'destructive'
-                  ? 'bg-destructive text-destructive-foreground border-destructive'
-                  : toast.variant === 'success'
-                  ? 'bg-green-600 text-white border-green-600'
-                  : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700'
-              }`}
-            >
-              {toast.title && (
-                <div className="font-medium mb-1">{toast.title}</div>
-              )}
-              <div className="text-sm">{toast.description}</div>
-              <button
-                className="absolute top-2 right-2 text-sm opacity-70 hover:opacity-100"
-                onClick={() => dismiss(toast.id)}
-              >
-                ✕
-              </button>
-            </div>
-          ))}
-        </div>
-      )}
+      <ToastContainer />
     </ToastContext.Provider>
-  );
+  )
 }
 
 export function useToast() {
-  const context = useContext(ToastContext);
+  const context = useContext(ToastContext)
   if (!context) {
-    throw new Error('useToast must be used within a ToastProvider');
+    throw new Error('useToast must be used within a ToastProvider')
   }
-  return context;
+  return context
+}
+
+function ToastContainer() {
+  const { toasts, dismissToast } = useToast()
+  
+  return (
+    <div className="fixed bottom-0 right-0 z-50 p-4 space-y-4 max-w-md w-full md:max-w-sm">
+      {toasts.map((toast) => (
+        <div 
+          key={toast.id}
+          className={cn(
+            "p-4 rounded-md shadow-lg transition-all transform translate-y-0 opacity-100 flex flex-col",
+            "bg-background text-foreground border",
+            toast.variant === 'success' && "border-green-500",
+            toast.variant === 'error' && "border-red-500",
+            toast.variant === 'warning' && "border-yellow-500",
+            toast.variant === 'destructive' && "bg-destructive text-destructive-foreground"
+          )}
+        >
+          <div className="flex justify-between items-start">
+            {toast.title && (
+              <h3 className="font-medium text-sm">{toast.title}</h3>
+            )}
+            <button 
+              onClick={() => dismissToast(toast.id)}
+              className="ml-auto text-foreground/50 hover:text-foreground"
+            >
+              <span className="sr-only">Close</span>
+              <svg 
+                xmlns="http://www.w3.org/2000/svg" 
+                width="24" 
+                height="24" 
+                viewBox="0 0 24 24" 
+                fill="none" 
+                stroke="currentColor" 
+                strokeWidth="2" 
+                strokeLinecap="round" 
+                strokeLinejoin="round" 
+                className="w-4 h-4"
+              >
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+          {toast.description && (
+            <div className="mt-1 text-sm">{toast.description}</div>
+          )}
+        </div>
+      ))}
+    </div>
+  )
 }
