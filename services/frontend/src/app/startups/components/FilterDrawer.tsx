@@ -11,6 +11,7 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  DialogDescription,
   DialogTrigger,
   DialogFooter,
   DialogClose,
@@ -138,6 +139,9 @@ const FilterDrawer: React.FC<FilterDrawerProps> = ({ filters, onFiltersChange })
       <DialogContent className="sm:max-w-[500px] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Filter Startups</DialogTitle>
+          <DialogDescription>
+            Select criteria to filter the startup list. Apply multiple filters to narrow your results.
+          </DialogDescription>
         </DialogHeader>
         
         <div className="grid gap-6 py-4">
