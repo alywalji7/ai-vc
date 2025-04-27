@@ -30,7 +30,7 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'cd services/frontend && npm run dev -- -p 5000',
+    command: 'cd apps/portal && npm run dev -- -p 5000',
     url: 'http://localhost:5000',
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,

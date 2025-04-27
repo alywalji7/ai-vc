@@ -1,38 +1,39 @@
 """
-Database connection and session management for the backend service.
+Database connection handling.
 """
 
 import os
 from typing import Generator
+
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session
+from sqlalchemy.orm import sessionmaker
 
-# Get database URL from environment variable
-DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./test.db")
-
-# Create SQLAlchemy engine
-engine = create_engine(
-    DATABASE_URL,
-    pool_pre_ping=True
+# Get database URL from environment variables with a SQLite fallback for testing
+SQLALCHEMY_DATABASE_URL = os.getenv(
+    "DATABASE_URL", "sqlite:///./test.db"
 )
+
+# Create SQLite engine with check_same_thread=False for testing
+connect_args = {}
+if SQLALCHEMY_DATABASE_URL.startswith("sqlite"):
+    connect_args["check_same_thread"] = False
+
+# Create database engine
+engine = create_engine(SQLALCHEMY_DATABASE_URL, connect_args=connect_args)
 
 # Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 
-# Base class for all models
+# Create declarative base for models
 Base = declarative_base()
 
-
-def get_db() -> Generator[Session, None, None]:
+def get_db() -> Generator:
     """
-    Get database session.
-    
-    This function creates a new database session for each request
-    and closes it when the request is finished.
+    Database dependency to use in FastAPI dependencies.
     
     Yields:
-        Database session
+        A SQLAlchemy session.
     """
     db = SessionLocal()
     try:

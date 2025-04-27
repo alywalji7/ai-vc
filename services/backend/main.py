@@ -7,7 +7,7 @@ import logging
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app import models
-from app.db import engine
+from app.db import engine, get_db
 from app.api.routes import router as api_router
 from app.observability import setup_observability
 
@@ -55,7 +55,7 @@ logger.info("Backend service initialized with observability")
 # Root endpoint
 @app.get("/")
 async def root():
-    return {"message": "Backend API Service"}
+    return {"message": "Welcome to the Polyglot Monorepo Backend API"}
 
 # Health check endpoint
 @app.get("/health")
