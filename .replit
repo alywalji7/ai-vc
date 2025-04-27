@@ -295,8 +295,8 @@ author = "agent"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "cd services/api && python test_api.py"
-waitForPort = 9000
+args = "cd services/api && python flask_app.py"
+waitForPort = 3000
 
 [deployment]
 run = ["sh", "-c", "cd services/frontend && npm install && npm run dev -- -p 5000"]
