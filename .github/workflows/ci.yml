@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [main, prompt8-audit]
+    branches: [main, prompt8-audit, ci-green-hotfix]
   pull_request:
-    branches: [main]
+    branches: [main, ci-green-hotfix]
 
 jobs:
   backend-tests:
