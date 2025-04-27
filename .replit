@@ -2,7 +2,7 @@ modules = ["nodejs-20", "python-3.11", "postgresql-16", "python3"]
 
 [nix]
 channel = "stable-24_05"
-packages = ["freetype", "glibcLocales", "libxcrypt", "libyaml", "rdkafka", "wget", "zlib", "imagemagick"]
+packages = ["freetype", "glibcLocales", "libxcrypt", "libyaml", "rdkafka", "wget", "zlib", "imagemagick", "gh"]
 
 [workflows]
 runButton = "Project"
