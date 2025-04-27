@@ -53,6 +53,14 @@ export async function setupMockServer(page: Page): Promise<void> {
               }
             }
           };
+        },
+        // Add health endpoint mock
+        '/health': (req: any) => {
+          return {
+            status: "ok",
+            timestamp: new Date().toISOString(),
+            version: "0.1.0"
+          };
         }
       }
     };

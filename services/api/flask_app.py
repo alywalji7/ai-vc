@@ -22,4 +22,5 @@ def root():
 
 if __name__ == '__main__':
     logger.info("Starting Supabase API Service with Flask")
-    app.run(host='0.0.0.0', port=3000, debug=True)
+    # Use port 4000 to avoid conflicts with other services
+    app.run(host='0.0.0.0', port=4000, debug=True)
