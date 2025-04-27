@@ -43,7 +43,9 @@ export default function DashboardPage() {
     );
   }
 
-  const formatCurrency = (value: number) => {
+  const formatCurrency = (value: number | undefined) => {
+    if (!value) return '$0';
+    
     if (value >= 1000000) {
       return `$${(value / 1000000).toFixed(1)}M`;
     } else if (value >= 1000) {
@@ -52,7 +54,8 @@ export default function DashboardPage() {
     return `$${value}`;
   };
 
-  const formatPercentage = (value: number) => {
+  const formatPercentage = (value: number | undefined) => {
+    if (value === undefined) return '0.0%';
     return `${(value * 100).toFixed(1)}%`;
   };
 
@@ -71,7 +74,7 @@ export default function DashboardPage() {
         
         <div className="bg-card rounded-xl shadow p-4">
           <h3 className="text-sm font-medium text-muted-foreground">TVPI</h3>
-          <p className="text-2xl font-bold text-foreground">{fundPerformance?.tvpi.toFixed(2)}x</p>
+          <p className="text-2xl font-bold text-foreground">{(fundPerformance?.tvpi ?? 0).toFixed(2)}x</p>
         </div>
         
         <div className="bg-card rounded-xl shadow p-4">
@@ -205,11 +208,11 @@ export default function DashboardPage() {
                           <span className="text-muted-foreground">MOIC:</span>
                           <span className={cn(
                             "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium",
-                            company.moic >= 2 ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' :
-                            company.moic >= 1 ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300' :
+                            (company.moic ?? 0) >= 2 ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' :
+                            (company.moic ?? 0) >= 1 ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300' :
                             'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'
                           )}>
-                            {company.moic.toFixed(1)}x
+                            {(company.moic ?? 0).toFixed(1)}x
                           </span>
                         </div>
                       </div>
@@ -251,11 +254,11 @@ export default function DashboardPage() {
                       <td className="px-6 py-4 whitespace-nowrap text-sm">
                         <span className={cn(
                           "inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium",
-                          company.moic >= 2 ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' :
-                          company.moic >= 1 ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300' :
+                          (company.moic ?? 0) >= 2 ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-300' :
+                          (company.moic ?? 0) >= 1 ? 'bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-300' :
                           'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-300'
                         )}>
-                          {company.moic.toFixed(1)}x
+                          {(company.moic ?? 0).toFixed(1)}x
                         </span>
                       </td>
                     </tr>

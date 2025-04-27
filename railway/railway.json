@@ -1,0 +1,6 @@
+{
+  "services": {
+    "api": { "path": "services/api" },
+    "worker": { "path": "services/worker" }
+  }
+}

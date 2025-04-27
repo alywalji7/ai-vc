@@ -1,4 +1,4 @@
-.PHONY: dev test format lint build clean observability seed_demo help
+.PHONY: dev test format lint build clean observability seed_demo deploy_api help
 
 # Default target
 help:
@@ -11,6 +11,7 @@ help:
         @echo "  make clean        - Remove Docker containers and volumes"
         @echo "  make observability - Start observability stack (Prometheus, Grafana, Jaeger)"
         @echo "  make seed_demo    - Run the data seeding demo to populate the knowledge graph"
+        @echo "  make deploy_api   - Deploy API and worker services to Railway"
 
 # Start development environment
 dev:
@@ -18,18 +19,18 @@ dev:
 
 # Run tests for all services
 test:
-        cd services/backend && poetry run pytest -v
-        cd services/frontend && npm test
+        cd services/api && poetry run pytest -v
+        cd apps/portal && npm test
 
 # Format code
 format:
-        cd services/backend && poetry run black .
-        cd services/frontend && npm run format
+        cd services/api && poetry run black .
+        cd apps/portal && npm run lint
 
 # Lint code
 lint:
-        cd services/backend && poetry run ruff .
-        cd services/frontend && npm run lint
+        cd services/api && poetry run ruff .
+        cd apps/portal && npm run lint
 
 # Build Docker images
 build:
@@ -48,3 +49,8 @@ observability:
 seed_demo:
         @echo "Starting data seeding demo..."
         @cd services/graph_ingest && python seed_demo.py
+
+# Deploy API and worker services to Railway
+deploy_api:
+        @echo "Deploying API and worker services to Railway..."
+        @cd railway && railway up

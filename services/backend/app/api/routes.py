@@ -10,14 +10,18 @@ from sqlalchemy.orm import Session
 from app.api.dataroom import router as dataroom_router
 from app.api.due_diligence import router as dd_router
 from app.api.scout.router import router as scout_router
+from app.api.users import router as users_router
+from app.api.items import router as items_router
 
 # Create the main API router
-router = APIRouter(prefix="/api")
+router = APIRouter()
 
 # Include all sub-routers
 router.include_router(dataroom_router)
 router.include_router(dd_router)
 router.include_router(scout_router)
+router.include_router(users_router)
+router.include_router(items_router)
 
 
 @router.get("/")

@@ -193,6 +193,39 @@ services:
     volumes:
       - ./services/graph_ingest:/app
     command: python main.py
+    
+  # New API Service (Supabase integration)
+  api:
+    build:
+      context: ./services/api
+      dockerfile: Dockerfile
+    environment:
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/aivc
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - postgres
+      - redis
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./services/api:/app
+      
+  # New Worker Service (Celery)
+  worker:
+    build:
+      context: ./services/worker
+      dockerfile: Dockerfile
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY}
+    depends_on:
+      - redis
+      - api
+    volumes:
+      - ./services/worker:/app
 
 volumes:
   postgres_data:

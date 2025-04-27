@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
     
     // Since we're using a mock implementation, we'll create a fake portal URL
     // In production, this would be the URL returned by Stripe's customer portal
-    const returnUrl = `${req.headers.get("origin") || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:5000"}/settings/billing`;
+    const returnUrl = `${req.headers.get("origin") || process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:3000"}/settings/billing`;
     
     const mockPortalUrl = `https://billing.stripe.com/p/session/test_portal_session_12345`;
     

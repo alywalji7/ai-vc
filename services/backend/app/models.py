@@ -44,7 +44,7 @@ class DataRoom(Base):
     description = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
-    data_metadata = Column(JSONB, nullable=True)  # Renamed from metadata to avoid conflict
+    data_metadata = Column(JSON)  # Changed from JSONB to JSON for SQLite compatibility
 
 
 class DueDiligenceResult(Base):
@@ -53,7 +53,7 @@ class DueDiligenceResult(Base):
     id = Column(Integer, primary_key=True, index=True)
     company_id = Column(String, index=True)
     module_name = Column(String, index=True)  # financial, tech, etc.
-    verdict = Column(JSONB, nullable=False)  # Contains the verdict JSON
+    verdict = Column(JSON)  # Changed from JSONB to JSON for SQLite compatibility
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     
     class Config:
