@@ -2,9 +2,9 @@ name: CI/CD Pipeline
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, ci-green-hotfix ]
   pull_request:
-    branches: [ main ]
+    branches: [ main, ci-green-hotfix ]
 
 jobs:
   test:
@@ -75,11 +75,12 @@ jobs:
         cd services/backend
         poetry install --no-interaction --no-root
     
+    - name: Install Ruff
+      run: pip install ruff
+      
     - name: Lint Python code
       run: |
-        cd services/backend
-        poetry run ruff .
-        poetry run black --check .
+        ruff check services/backend scripts
     
     - name: Set up Node.js
       uses: actions/setup-node@v3

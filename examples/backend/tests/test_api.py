@@ -29,7 +29,7 @@ def override_get_db():
 
 app.dependency_overrides[get_db] = override_get_db
 
-# Use TestClient with context manager
+# Use context manager with TestClient to ensure proper cleanup
 @pytest.fixture
 def client():
     with TestClient(app) as test_client:
