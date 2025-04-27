@@ -75,6 +75,9 @@ jobs:
         cd services/backend
         poetry install --no-interaction --no-root
     
+    - name: Install Ruff
+      run: pip install ruff
+      
     - name: Lint Python code
       run: |
         ruff check services/backend scripts

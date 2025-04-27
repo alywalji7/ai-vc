@@ -29,20 +29,23 @@ def override_get_db():
 
 app.dependency_overrides[get_db] = override_get_db
 
-# Test client
-client = TestClient(app)
+# Use TestClient with context manager
+@pytest.fixture
+def client():
+    with TestClient(app) as test_client:
+        yield test_client
 
-def test_read_main():
+def test_read_main(client):
     response = client.get("/")
     assert response.status_code == 200
     assert response.json() == {"message": "Welcome to the Polyglot Monorepo Backend API"}
 
-def test_health_check():
+def test_health_check(client):
     response = client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "healthy"}
 
-def test_create_user():
+def test_create_user(client):
     response = client.post(
         "/api/users/",
         json={"username": "testuser", "email": "test@example.com", "password": "password123"},
@@ -57,7 +60,7 @@ def test_create_user():
     user_id = data["id"]
     return user_id
 
-def test_create_duplicate_user():
+def test_create_duplicate_user(client):
     # First, create a user
     client.post(
         "/api/users/",
@@ -78,12 +81,12 @@ def test_create_duplicate_user():
     )
     assert response.status_code == 400
 
-def test_read_users():
+def test_read_users(client):
     response = client.get("/api/users/")
     assert response.status_code == 200
     assert isinstance(response.json(), list)
     
-def test_create_and_read_item():
+def test_create_and_read_item(client):
     # First, create a user
     user_response = client.post(
         "/api/users/",
