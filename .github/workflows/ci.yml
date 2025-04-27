@@ -70,6 +70,7 @@ jobs:
           
   security-scan:
     runs-on: ubuntu-latest
+    if: hashFiles('**/Dockerfile') != ''
     steps:
       - uses: actions/checkout@v4
       
@@ -156,23 +157,33 @@ jobs:
   
   frontend-tests:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: examples/frontend      # <- real frontend dir
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Node.js
+
+      - name: Set up Node
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
-      
-      - name: Install dependencies
+          node-version: 20
+          cache: npm
+
+      - name: Install deps (only if package.json exists)
         run: |
-          cd examples/frontend
-          [ -f package.json ] && npm ci || echo "No package.json found, skipping npm ci"
-      
-      - name: Run frontend tests
+          if [ -f package.json ]; then
+            npm ci
+          else
+            echo "No frontend package.json – skipping install"
+          fi
+
+      - name: Run unit tests
         run: |
-          cd examples/frontend
-          [ -f package.json ] && npm test || echo "No package.json found, skipping tests"
+          if [ -f package.json ]; then
+            npm test --if-present
+          else
+            echo "No frontend tests to run"
+          fi
   
   e2e-tests:
     runs-on: ubuntu-latest

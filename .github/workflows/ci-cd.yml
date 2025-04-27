@@ -77,9 +77,8 @@ jobs:
     
     - name: Lint Python code
       run: |
-        cd services/backend
-        poetry run ruff .
-        poetry run black --check .
+        poetry run ruff ./examples/backend ./scripts
+        poetry run black --check ./examples/backend ./scripts
     
     - name: Set up Node.js
       uses: actions/setup-node@v3
