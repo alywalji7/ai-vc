@@ -7,8 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
-    "test": "jest",
-    "test:e2e": "playwright test"
+    "test": "playwright test --config=playwright.config.ts",
+    "test:unit": "jest"
   },
   "dependencies": {
     "@radix-ui/react-checkbox": "^1.0.4",

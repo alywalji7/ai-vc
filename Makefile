@@ -19,18 +19,18 @@ dev:
 
 # Run tests for all services
 test:
-        cd services/backend && poetry run pytest -v
-        cd services/frontend && npm test
+        cd services/api && poetry run pytest -v
+        cd apps/portal && npm test
 
 # Format code
 format:
-        cd services/backend && poetry run black .
-        cd services/frontend && npm run format
+        cd services/api && poetry run black .
+        cd apps/portal && npm run lint
 
 # Lint code
 lint:
-        cd services/backend && poetry run ruff .
-        cd services/frontend && npm run lint
+        cd services/api && poetry run ruff .
+        cd apps/portal && npm run lint
 
 # Build Docker images
 build:
